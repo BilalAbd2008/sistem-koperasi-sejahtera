@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,9 +26,32 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body suppressHydrationWarning className="min-h-full flex flex-col">
+        <Script id="strip-extension-attrs" strategy="beforeInteractive">
+          {`(() => {
+            const attrPattern = /^(bis_|fdprocessedid$|__processed_|data-new-gr-c-s-check-loaded$|data-gr-ext-installed$)/;
+
+            const scrub = (root) => {
+              if (!root || !root.querySelectorAll) return;
+
+              const allNodes = [root, ...root.querySelectorAll('*')];
+              for (const node of allNodes) {
+                for (const attr of Array.from(node.attributes || [])) {
+                  if (attrPattern.test(attr.name)) {
+                    node.removeAttribute(attr.name);
+                  }
+                }
+              }
+            };
+
+            scrub(document.documentElement);
+          })();`}
+        </Script>
+        {children}
+      </body>
     </html>
   );
 }
