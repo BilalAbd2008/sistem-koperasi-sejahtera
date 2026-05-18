@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS anggota (
 CREATE TABLE IF NOT EXISTS simpanan (
   id INT PRIMARY KEY AUTO_INCREMENT,
   id_anggota INT NOT NULL,
-  jenis_simpanan ENUM('wajib', 'lebaran', 'pendidikan') NOT NULL,
+  jenis_simpanan ENUM('wajib', 'lebaran', 'pendidikan', 'sukarela') NOT NULL,
   jumlah DECIMAL(12, 2) NOT NULL,
   tanggal_simpanan DATE NOT NULL,
   status ENUM('aktif', 'nonaktif', 'ditarik') DEFAULT 'aktif',
@@ -55,6 +55,32 @@ CREATE TABLE IF NOT EXISTS pembayaran_pinjaman (
   keterangan VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (id_pinjaman) REFERENCES pinjaman(id) ON DELETE CASCADE
+);
+
+-- 4b. Tabel Utang Toko (Store Debt)
+CREATE TABLE IF NOT EXISTS utang_toko (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  id_anggota INT NOT NULL,
+  bulan VARCHAR(7) NOT NULL,
+  jumlah DECIMAL(12, 2) NOT NULL,
+  status ENUM('aktif', 'lunas', 'batal') DEFAULT 'aktif',
+  tanggal_input DATE NOT NULL,
+  keterangan TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (id_anggota) REFERENCES anggota(id) ON DELETE CASCADE
+);
+
+-- 4c. Tabel Pengaturan Alokasi SHU
+CREATE TABLE IF NOT EXISTS shu_alokasi (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  periode VARCHAR(7) NOT NULL,
+  kode_alokasi VARCHAR(50) NOT NULL,
+  label VARCHAR(100) NOT NULL,
+  persentase DECIMAL(6, 2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_shu_alokasi_periode_kode (periode, kode_alokasi)
 );
 
 -- 5. Tabel Pengguna (Users - Admin/Bendahara/Pengurus)
@@ -138,6 +164,9 @@ CREATE INDEX idx_simpanan_tanggal ON simpanan(tanggal_simpanan);
 CREATE INDEX idx_pinjaman_anggota ON pinjaman(id_anggota);
 CREATE INDEX idx_pinjaman_status ON pinjaman(status);
 CREATE INDEX idx_pembayaran_pinjaman ON pembayaran_pinjaman(id_pinjaman);
+CREATE INDEX idx_utang_toko_anggota ON utang_toko(id_anggota);
+CREATE INDEX idx_utang_toko_bulan ON utang_toko(bulan);
+CREATE INDEX idx_shu_alokasi_periode ON shu_alokasi(periode);
 CREATE INDEX idx_pengguna_role ON pengguna(role);
 CREATE INDEX idx_transaksi_anggota ON transaksi_lain(id_anggota);
 CREATE INDEX idx_pengumuman_tanggal ON pengumuman(tanggal_pengumuman);

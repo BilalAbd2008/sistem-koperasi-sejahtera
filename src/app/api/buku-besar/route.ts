@@ -1,26 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import type { ResultSetHeader } from "mysql2";
 
 export const dynamic = "force-dynamic";
+
+interface LedgerResult {
+  system: string;
+  old: unknown[] | null;
+  new: unknown[] | null;
+}
 
 /**
  * GET /api/buku-besar (General Ledger by Account)
  * Query params:
  *   - akun: account name (for old system) or kodeRekening (for new system)
- *   - periode: YYYY-MM (for new system)
- *   - system: 'old' | 'new' | 'all' (default)
+ *   - periode_awal: YYYY-MM-DD
+ *   - periode_akhir: YYYY-MM-DD
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const akun = searchParams.get("akun");
     const periode = searchParams.get("periode");
-    const system = searchParams.get("system") || "all";
+    const periodeAwal = searchParams.get("periode_awal");
+    const periodeAkhir = searchParams.get("periode_akhir");
+    const system = searchParams.get("system") || "old";
 
     const connection = await pool.getConnection();
 
     try {
-      let result: any = {
+      const result: LedgerResult = {
         system,
         old: null,
         new: null,
@@ -50,11 +59,19 @@ export async function GET(request: NextRequest) {
           oldQuery += " AND t.jenis_transaksi = ?";
           oldParams.push(akun);
         }
+        if (periodeAwal) {
+          oldQuery += " AND DATE(t.tanggal_transaksi) >= ?";
+          oldParams.push(periodeAwal);
+        }
+        if (periodeAkhir) {
+          oldQuery += " AND DATE(t.tanggal_transaksi) <= ?";
+          oldParams.push(periodeAkhir);
+        }
 
         oldQuery += " ORDER BY t.tanggal_transaksi ASC, t.id ASC";
 
         const [oldRows] = await connection.query(oldQuery, oldParams);
-        result.old = oldRows;
+        result.old = oldRows as unknown[];
       }
 
       // Fetch from new system (jurnal_detail)
@@ -82,7 +99,7 @@ export async function GET(request: NextRequest) {
           LEFT JOIN rekening r ON jd.kode_rekening = r.kode_rekening
           WHERE ju.status_posting = 'posted'
         `;
-        const newParams: any[] = [];
+        const newParams: unknown[] = [];
 
         if (akun) {
           newQuery += " AND jd.kode_rekening = ?";
@@ -96,7 +113,7 @@ export async function GET(request: NextRequest) {
         newQuery += " ORDER BY ju.tanggal_jurnal ASC, ju.nomor_jurnal ASC";
 
         const [newRows] = await connection.query(newQuery, newParams);
-        result.new = newRows;
+        result.new = newRows as unknown[];
       }
 
       return NextResponse.json({
@@ -108,6 +125,76 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error("GET /api/buku-besar error:", error);
+    return NextResponse.json(
+      { success: false, error: String(error) },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const { id, akun, tanggal_transaksi, tipe, jumlah, keterangan } = await request.json();
+
+    if (!id || !akun || !tanggal_transaksi || !tipe || !jumlah) {
+      return NextResponse.json(
+        { success: false, error: "Data buku besar belum lengkap" },
+        { status: 400 },
+      );
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      const [result] = await connection.query<ResultSetHeader>(
+        `UPDATE transaksi_lain
+         SET jenis_transaksi = ?, tanggal_transaksi = ?, tipe = ?, jumlah = ?, keterangan = ?
+         WHERE id = ?`,
+        [akun, tanggal_transaksi, tipe, Number(jumlah), keterangan || "", id],
+      );
+
+      return NextResponse.json({
+        success: result.affectedRows > 0,
+        message: result.affectedRows > 0 ? "Transaksi berhasil diperbarui" : "Transaksi tidak ditemukan",
+      });
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error("PUT /api/buku-besar error:", error);
+    return NextResponse.json(
+      { success: false, error: String(error) },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { id } = await request.json();
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "ID transaksi diperlukan" },
+        { status: 400 },
+      );
+    }
+
+    const connection = await pool.getConnection();
+    try {
+      const [result] = await connection.query<ResultSetHeader>(
+        "DELETE FROM transaksi_lain WHERE id = ?",
+        [id],
+      );
+
+      return NextResponse.json({
+        success: result.affectedRows > 0,
+        message: result.affectedRows > 0 ? "Transaksi berhasil dihapus" : "Transaksi tidak ditemukan",
+      });
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error("DELETE /api/buku-besar error:", error);
     return NextResponse.json(
       { success: false, error: String(error) },
       { status: 500 },

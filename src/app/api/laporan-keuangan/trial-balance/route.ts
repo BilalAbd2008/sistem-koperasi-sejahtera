@@ -7,20 +7,32 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   try {
     const periode = request.nextUrl.searchParams.get("periode");
+    let periodeAwal = request.nextUrl.searchParams.get("periode_awal");
+    let periodeAkhir = request.nextUrl.searchParams.get("periode_akhir");
     const system = request.nextUrl.searchParams.get("system") || "old";
 
-    if (!periode) {
+    if (!periode && (!periodeAwal || !periodeAkhir)) {
       return NextResponse.json(
-        { success: false, error: "Parameter 'periode' (YYYY-MM) diperlukan" },
+        { success: false, error: "Parameter tahun/periode diperlukan" },
         { status: 400 },
       );
     }
 
-    const periodeAwal = `${periode}-01`;
-    const [yearValue, monthValue] = periode.split("-").map(Number);
-    const periodeAkhir = new Date(yearValue, monthValue, 0)
-      .toISOString()
-      .slice(0, 10);
+    if (periode && (!periodeAwal || !periodeAkhir)) {
+      periodeAwal = `${periode}-01`;
+      const [yearValue, monthValue] = periode.split("-").map(Number);
+      const lastDay = new Date(yearValue, monthValue, 0).getDate();
+      periodeAkhir = `${yearValue}-${String(monthValue).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    }
+
+    if (!periodeAwal || !periodeAkhir) {
+      return NextResponse.json(
+        { success: false, error: "Tanggal awal dan akhir periode diperlukan" },
+        { status: 400 },
+      );
+    }
+
+    const periodeLabel = periode || `${periodeAwal} s/d ${periodeAkhir}`;
 
     const connection = await pool.getConnection();
 
@@ -31,13 +43,13 @@ export async function GET(request: NextRequest) {
       const hasModernAccounting =
         Number((tableRows as Array<{ tableCount: number }>)[0]?.tableCount || 0) > 0;
 
-      if (system === "new" && hasModernAccounting) {
+      if (system === "new" && hasModernAccounting && periode) {
         const data = await getTrialBalance(connection, periode);
 
         return NextResponse.json({
           success: true,
           data,
-          periode,
+          periode: periodeLabel,
           source: "rekening",
         });
       }
@@ -69,7 +81,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data,
-        periode,
+        periode: periodeLabel,
         source: "transaksi_lain",
       });
     } finally {

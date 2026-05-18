@@ -21,6 +21,7 @@ export default function ChartOfAccountsPage() {
     const currentUser = getCurrentUser();
     if (!currentUser) return void router.push("/");
     if (currentUser.role !== "bendahara" && currentUser.role !== "admin") return void router.push("/dashboard");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(currentUser);
     setLoading(false);
   }, [router]);
@@ -40,9 +41,9 @@ export default function ChartOfAccountsPage() {
         <div className="flex-1 bg-slate-50 px-8 py-6">
           <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-slate-500">Konfigurasi</p>
-            <h1 className="text-2xl font-bold text-slate-900">Chart of Accounts</h1>
+            <h1 className="text-2xl font-bold text-slate-900">Nama Akun</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Kelola daftar akun untuk jurnal dan laporan keuangan.
+              Kelola nama akun untuk jurnal dan laporan keuangan.
             </p>
           </div>
           <ChartOfAccountsManager />

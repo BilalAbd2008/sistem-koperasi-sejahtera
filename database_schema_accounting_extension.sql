@@ -113,6 +113,7 @@ INSERT IGNORE INTO rekening (kode_rekening, nama_rekening, deskripsi, kategori, 
 ('1-1200', 'Bank', 'Rekening Bank', 'aset', 'debit', 'aktif', CURDATE()),
 ('1-1300', 'Piutang Pinjaman', 'Piutang dari member yang meminjam', 'aset', 'debit', 'aktif', CURDATE()),
 ('1-1400', 'Piutang Bunga', 'Bunga pinjaman yang masih piutang', 'aset', 'debit', 'aktif', CURDATE()),
+('1-1500', 'Piutang Toko', 'Piutang barang/toko anggota', 'aset', 'debit', 'aktif', CURDATE()),
 ('1-2000', 'Aset Tetap', 'Fixed Assets', 'aset', 'debit', 'aktif', CURDATE()),
 ('1-2100', 'Peralatan Kantor', 'Peralatan & furniture kantor', 'aset', 'debit', 'aktif', CURDATE()),
 ('1-2200', 'Akumulasi Penyusutan Peralatan', 'Accumulated Depreciation', 'aset', 'kredit', 'aktif', CURDATE());
@@ -124,6 +125,7 @@ INSERT IGNORE INTO rekening (kode_rekening, nama_rekening, deskripsi, kategori, 
 ('2-1100', 'Simpanan Wajib', 'Simpanan mandatory', 'liabilitas', 'kredit', 'aktif', CURDATE()),
 ('2-1200', 'Simpanan Lebaran', 'Simpanan khusus lebaran', 'liabilitas', 'kredit', 'aktif', CURDATE()),
 ('2-1300', 'Simpanan Pendidikan', 'Simpanan untuk pendidikan', 'liabilitas', 'kredit', 'aktif', CURDATE()),
+('2-1400', 'Simpanan Sukarela', 'Simpanan sukarela anggota', 'liabilitas', 'kredit', 'aktif', CURDATE()),
 ('2-2000', 'Utang Lain-lain', 'Liabilitas jangka panjang', 'liabilitas', 'kredit', 'aktif', CURDATE());
 
 -- MODAL (Kredit Normal)
@@ -137,6 +139,7 @@ INSERT IGNORE INTO rekening (kode_rekening, nama_rekening, deskripsi, kategori, 
 INSERT IGNORE INTO rekening (kode_rekening, nama_rekening, deskripsi, kategori, tipe_normal, status, tanggal_buat) VALUES
 ('4-0000', 'PENDAPATAN', 'Pendapatan Total', 'pendapatan', 'kredit', 'aktif', CURDATE()),
 ('4-1000', 'Pendapatan Bunga', 'Bunga dari pinjaman member', 'pendapatan', 'kredit', 'aktif', CURDATE()),
+('4-3000', 'Pendapatan Toko', 'Pendapatan dari transaksi toko anggota', 'pendapatan', 'kredit', 'aktif', CURDATE()),
 ('4-2000', 'Pendapatan Lain-lain', 'Income dari sumber lain', 'pendapatan', 'kredit', 'aktif', CURDATE());
 
 -- BEBAN (Debit Normal)

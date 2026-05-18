@@ -11,8 +11,7 @@ interface TrialBalanceRow {
   saldoKredit: number;
 }
 
-const currentPeriod = () =>
-  `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+const currentYear = () => String(new Date().getFullYear());
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("id-ID", {
@@ -22,7 +21,7 @@ const formatCurrency = (value: number) =>
   }).format(value);
 
 export default function TrialBalanceReport() {
-  const [periode, setPeriode] = useState(currentPeriod());
+  const [year, setYear] = useState(currentYear());
   const [rows, setRows] = useState<TrialBalanceRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -31,7 +30,11 @@ export default function TrialBalanceReport() {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({ periode, system: "old" });
+      const params = new URLSearchParams({
+        periode_awal: `${year}-01-01`,
+        periode_akhir: `${year}-12-31`,
+        system: "old",
+      });
       const response = await fetch(`/api/laporan-keuangan/trial-balance?${params}`);
       const result = await response.json();
 
@@ -49,7 +52,9 @@ export default function TrialBalanceReport() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const totals = useMemo(
@@ -75,12 +80,13 @@ export default function TrialBalanceReport() {
         </div>
         <div className="flex items-end gap-3">
           <label className="text-sm text-slate-700">
-            <span className="mb-1 block text-xs font-semibold">Periode</span>
+            <span className="mb-1 block text-xs font-semibold">Tahun</span>
             <input
-              value={periode}
-              onChange={(event) => setPeriode(event.target.value)}
+              type="number"
+              value={year}
+              onChange={(event) => setYear(event.target.value)}
               className="h-10 rounded-xl border border-slate-200 px-3 text-sm text-slate-900 outline-none focus:border-emerald-500"
-              placeholder="2026-05"
+              placeholder="2026"
             />
           </label>
           <button

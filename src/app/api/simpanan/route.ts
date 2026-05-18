@@ -6,7 +6,7 @@ import {
   postJournalEntry,
   createSavingJournalEntry 
 } from "@/lib/accounting";
-import type { PoolConnection } from "mysql2/promise";
+import type { PoolConnection, ResultSetHeader } from "mysql2/promise";
 
 let savingTypeMigrationPromise: Promise<void> | null = null;
 
@@ -20,14 +20,17 @@ async function ensureSavingTypes(connection: PoolConnection) {
         "UPDATE simpanan SET jenis_simpanan = 'wajib' WHERE jenis_simpanan = 'pokok'",
       );
       await connection.query(
-        "UPDATE simpanan SET jenis_simpanan = 'lebaran' WHERE jenis_simpanan = 'sukarela'",
-      );
-      await connection.query(
-        "ALTER TABLE simpanan MODIFY jenis_simpanan ENUM('wajib', 'lebaran', 'pendidikan') NOT NULL",
+        "ALTER TABLE simpanan MODIFY jenis_simpanan ENUM('wajib', 'lebaran', 'pendidikan', 'sukarela') NOT NULL",
       );
       await connection.query(
         "ALTER TABLE simpanan MODIFY status ENUM('aktif', 'nonaktif', 'ditarik') DEFAULT 'aktif'",
       );
+      await connection.query(`
+        INSERT IGNORE INTO rekening
+          (kode_rekening, nama_rekening, deskripsi, kategori, tipe_normal, status, tanggal_buat)
+        VALUES
+          ('2-1400', 'Simpanan Sukarela', 'Simpanan sukarela anggota', 'liabilitas', 'kredit', 'aktif', CURDATE())
+      `).catch(() => undefined);
     })();
   }
 
@@ -43,11 +46,11 @@ export async function GET(request: NextRequest) {
     await ensureSavingTypes(connection);
 
     let query = `
-      SELECT s.*, a.nama, a.no_anggota 
+      SELECT s.*, a.nama, a.no_anggota, a.status_pekerjaan 
       FROM simpanan s 
       JOIN anggota a ON s.id_anggota = a.id
     `;
-    let params: any[] = [];
+    const params: string[] = [];
 
     if (id_anggota) {
       query += " WHERE s.id_anggota = ?";
@@ -74,7 +77,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { id_anggota, jenis_simpanan, jumlah, idPengguna } = await request.json();
+    const { id_anggota, jenis_simpanan, jumlah, status, idPengguna } = await request.json();
 
     const connection = await pool.getConnection();
     try {
@@ -82,11 +85,11 @@ export async function POST(request: NextRequest) {
       await connection.beginTransaction();
 
       // Insert ke tabel simpanan
-      const [result] = await connection.query(
-        "INSERT INTO simpanan (id_anggota, jenis_simpanan, jumlah, tanggal_simpanan) VALUES (?, ?, ?, NOW())",
-        [id_anggota, jenis_simpanan, jumlah],
+      const [result] = await connection.query<ResultSetHeader>(
+        "INSERT INTO simpanan (id_anggota, jenis_simpanan, jumlah, tanggal_simpanan, status) VALUES (?, ?, ?, NOW(), ?)",
+        [id_anggota, jenis_simpanan, jumlah, status || "aktif"],
       );
-      const idSimpanan = (result as any).insertId;
+      const idSimpanan = result.insertId;
 
       // Legacy: Insert ke transaksi_lain untuk backward compatibility
       await addBalancedJournal(
@@ -102,7 +105,7 @@ export async function POST(request: NextRequest) {
       try {
         const modernJournal = createSavingJournalEntry(
           Number(id_anggota),
-          jenis_simpanan as "wajib" | "lebaran" | "pendidikan",
+          jenis_simpanan as "wajib" | "lebaran" | "pendidikan" | "sukarela",
           Number(jumlah),
           now,
           periode,

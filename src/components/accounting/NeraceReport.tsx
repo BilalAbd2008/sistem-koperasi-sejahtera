@@ -30,34 +30,23 @@ const formatCurrency = (value: number) => {
 
 export default function NeraceReport() {
   const [data, setData] = useState<BalanceSheetData | null>(null);
-  const [periode, setPeriode] = useState(
-    `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-  );
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const [loading, setLoading] = useState(false);
-  const [system, setSystem] = useState<'new' | 'old' | 'all'>('old');
-
-  useEffect(() => {
-    fetchData();
-  }, []);
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        periode,
-        system,
+        periode_awal: `${year}-01-01`,
+        periode_akhir: `${year}-12-31`,
+        system: 'old',
       });
 
       const res = await fetch(`/api/laporan-keuangan/neraca?${params}`);
       const result = await res.json();
       const payload = result.data || {};
 
-      if (system === 'new' || system === 'all') {
-          const systemData = system === 'new' ? payload.new : payload.old || payload.new;
-        setData(systemData);
-      } else {
-          setData(payload.old);
-      }
+      setData(payload.old);
     } catch (error) {
       console.error('Error fetching data:', error);
       alert('Error loading report: ' + String(error));
@@ -65,6 +54,12 @@ export default function NeraceReport() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePrint = () => {
     window.print();
@@ -108,27 +103,14 @@ export default function NeraceReport() {
       {/* Filter */}
       <div className="mb-6 flex flex-wrap gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         <div>
-          <label className="block text-sm font-semibold mb-1">Periode</label>
+          <label className="block text-sm font-semibold mb-1">Tahun</label>
           <input
-            type="text"
-            value={periode}
-            onChange={(e) => setPeriode(e.target.value)}
-            placeholder="2025-05"
+            type="number"
+            value={year}
+            onChange={(e) => setYear(e.target.value)}
+            placeholder="2026"
             className="rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
           />
-        </div>
-
-        <div>
-          <label className="block text-sm font-semibold mb-1">Sistem</label>
-          <select
-            value={system}
-            onChange={(e) => setSystem(e.target.value as any)}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
-          >
-            <option value="new">Sistem Baru (Modern)</option>
-            <option value="old">Sistem Lama (Legacy)</option>
-            <option value="all">Gabungan</option>
-          </select>
         </div>
 
         <button
@@ -143,10 +125,10 @@ export default function NeraceReport() {
       {/* Status */}
       <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         <p className="text-sm">
-          <strong>Periode:</strong> {data.periode} | 
+          <strong>Tahun:</strong> {year} | 
           <strong className="ml-4">Status Neraca:</strong>
           <span className={`ml-2 ${isBalanced ? 'text-green-600' : 'text-red-600'}`}>
-            {isBalanced ? '✅ SEIMBANG' : '❌ TIDAK SEIMBANG'}
+            {isBalanced ? 'SEIMBANG' : 'TIDAK SEIMBANG'}
           </span>
         </p>
       </div>
@@ -179,7 +161,7 @@ export default function NeraceReport() {
 
         {/* Right: Liabilities & Equity */}
         <div>
-          <h2 className="text-lg font-bold mb-4 border-b-2 pb-2">LIABILITAS & MODAL (Kanan)</h2>
+          <h2 className="text-lg font-bold mb-4 border-b-2 pb-2">LIABILITAS & EKUITAS (Kanan)</h2>
 
           <div className="mb-6">
             <h3 className="font-semibold mb-3 text-red-700">Liabilitas</h3>
@@ -201,7 +183,7 @@ export default function NeraceReport() {
           </div>
 
           <div className="mb-6">
-            <h3 className="font-semibold mb-3 text-green-700">Modal</h3>
+            <h3 className="font-semibold mb-3 text-green-700">Ekuitas</h3>
             {data.equity.map((item) => (
               <div key={item.kodeRekening} className="flex justify-between mb-2">
                 <span className="text-sm">
@@ -214,14 +196,14 @@ export default function NeraceReport() {
 
           <div className="border-t-2 pt-3">
             <div className="flex justify-between font-bold">
-              <span>Total Modal</span>
+              <span>Total Ekuitas</span>
               <span className="font-mono">{formatCurrency(data.totalEquity)}</span>
             </div>
           </div>
 
           <div className="border-t-2 pt-3 mt-6">
             <div className="flex justify-between font-bold text-lg">
-              <span>TOTAL LIABILITAS + MODAL</span>
+              <span>TOTAL LIABILITAS + EKUITAS</span>
               <span className="font-mono">
                 {formatCurrency(data.totalLiabilities + data.totalEquity)}
               </span>
@@ -239,7 +221,7 @@ export default function NeraceReport() {
             <p className="font-bold text-lg">{formatCurrency(data.totalAssets)}</p>
           </div>
           <div>
-            <p className="text-gray-600">Total Liabilitas + Modal</p>
+            <p className="text-gray-600">Total Liabilitas + Ekuitas</p>
             <p className="font-bold text-lg">
               {formatCurrency(data.totalLiabilities + data.totalEquity)}
             </p>
@@ -262,8 +244,8 @@ export default function NeraceReport() {
       {/* Notes */}
       <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm">
         <p>
-          <strong>Catatan:</strong> Neraca ini menampilkan posisi keuangan pada akhir periode
-          {data.periode}. Data diambil dari jurnal yang sudah di-posting dan saldo telah dikurangi
+          <strong>Catatan:</strong> Neraca ini menampilkan posisi keuangan pada akhir tahun
+          {year}. Data diambil dari jurnal yang sudah di-posting dan saldo telah dikurangi
           dengan akun kontra.
         </p>
       </div>

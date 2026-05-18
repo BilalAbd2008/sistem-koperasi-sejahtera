@@ -364,7 +364,7 @@ export async function updateSaldoRekening(
  */
 export function createSavingJournalEntry(
   memberId: number,
-  savingType: "wajib" | "lebaran" | "pendidikan",
+  savingType: "wajib" | "lebaran" | "pendidikan" | "sukarela",
   amount: number,
   tanggalJurnal: Date | string,
   periode: string,
@@ -375,6 +375,7 @@ export function createSavingJournalEntry(
     wajib: "2-1100",
     lebaran: "2-1200",
     pendidikan: "2-1300",
+    sukarela: "2-1400",
   };
 
   return {

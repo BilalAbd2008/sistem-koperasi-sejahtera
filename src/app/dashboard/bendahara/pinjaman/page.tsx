@@ -119,6 +119,10 @@ export default function BendaharaPinjamanPage() {
   const [periodFilter, setPeriodFilter] = useState("semua");
   const [billingStartDate, setBillingStartDate] = useState(() => toDateInput(new Date()));
   const [billingEndDate, setBillingEndDate] = useState(() => toDateInput(new Date()));
+  const [simulation, setSimulation] = useState({
+    jumlah_pinjam: "",
+    jangka_waktu: "",
+  });
   const [formData, setFormData] = useState({
     id_anggota: "",
     jumlah_pinjam: "",
@@ -199,6 +203,11 @@ export default function BendaharaPinjamanPage() {
     Number(formData.jumlah_pinjam || 0),
     Number(formData.jangka_waktu || 0),
   );
+  const simulationPrincipal = Number(simulation.jumlah_pinjam || 0);
+  const simulationTenor = Number(simulation.jangka_waktu || 0);
+  const simulationInterest = hitungBungaBulanan(simulationPrincipal);
+  const simulationInstallment = hitungAngsuran(simulationPrincipal, simulationTenor);
+  const simulationTotalPayment = simulationInstallment * simulationTenor;
 
   const loadData = async () => {
     try {
@@ -221,6 +230,7 @@ export default function BendaharaPinjamanPage() {
     const currentUser = getCurrentUser();
     if (!currentUser) return void router.push("/");
     if (currentUser.role !== "bendahara") return void router.push("/dashboard");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(currentUser);
     loadData();
   }, [router]);
@@ -526,6 +536,70 @@ export default function BendaharaPinjamanPage() {
                 >
                   + Tambah Pinjaman
                 </button>
+              </div>
+            </div>
+            <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+              <div className="mb-4">
+                <p className="text-sm font-semibold text-emerald-700">Simulasi Pinjaman</p>
+                <h2 className="text-lg font-bold text-slate-900">Hitung estimasi angsuran</h2>
+              </div>
+              <div className="grid gap-3 md:grid-cols-4">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-slate-600">Jumlah pinjaman</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={simulation.jumlah_pinjam}
+                    onChange={(event) =>
+                      setSimulation((current) => ({
+                        ...current,
+                        jumlah_pinjam: event.target.value,
+                      }))
+                    }
+                    placeholder="Contoh: 10000000"
+                    className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-slate-600">Jangka waktu</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={simulation.jangka_waktu}
+                    onChange={(event) =>
+                      setSimulation((current) => ({
+                        ...current,
+                        jangka_waktu: event.target.value,
+                      }))
+                    }
+                    placeholder="Bulan"
+                    className="rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm text-slate-900"
+                  />
+                </label>
+                <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3">
+                  <p className="text-xs font-semibold text-slate-500">Bunga per bulan</p>
+                  <p className="mt-1 font-bold text-slate-900">{formatMoney(simulationInterest)}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3">
+                  <p className="text-xs font-semibold text-slate-500">Angsuran per bulan</p>
+                  <p className="mt-1 font-bold text-emerald-700">{formatMoney(simulationInstallment)}</p>
+                </div>
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl bg-white px-4 py-3 text-sm">
+                  <span className="text-slate-500">Pokok per bulan: </span>
+                  <strong className="text-slate-900">
+                    {formatMoney(simulationTenor ? simulationPrincipal / simulationTenor : 0)}
+                  </strong>
+                </div>
+                <div className="rounded-xl bg-white px-4 py-3 text-sm">
+                  <span className="text-slate-500">Total bunga: </span>
+                  <strong className="text-slate-900">{formatMoney(simulationInterest * simulationTenor)}</strong>
+                </div>
+                <div className="rounded-xl bg-white px-4 py-3 text-sm">
+                  <span className="text-slate-500">Total dibayar: </span>
+                  <strong className="text-slate-900">{formatMoney(simulationTotalPayment)}</strong>
+                </div>
               </div>
             </div>
             <div className="mt-5 grid gap-3 md:grid-cols-5">

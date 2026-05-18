@@ -58,6 +58,7 @@ export default function BendaharaAnggotaPage() {
     const user = getCurrentUser();
     if (!user) return void router.push("/");
     if (user.role !== "bendahara" && user.role !== "admin") return void router.push("/dashboard");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(user);
     loadData();
   }, [router]);
@@ -198,7 +199,7 @@ export default function BendaharaAnggotaPage() {
                     <th className="px-6 py-4">Nama</th>
                     <th className="px-6 py-4">Email</th>
                     <th className="px-6 py-4">No. HP</th>
-                    <th className="px-6 py-4">Status Pekerjaan</th>
+                    <th className="px-6 py-4">Status</th>
                     <th className="px-6 py-4">Aksi</th>
                   </tr>
                 </thead>
@@ -299,7 +300,7 @@ export default function BendaharaAnggotaPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Status Pekerjaan</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
                 <input
                   type="text"
                   value={formData.status_pekerjaan}
@@ -372,7 +373,7 @@ export default function BendaharaAnggotaPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Status Pekerjaan</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
                 <input
                   type="text"
                   value={formData.status_pekerjaan}

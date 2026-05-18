@@ -17,6 +17,7 @@ interface SimpananItem {
   id_anggota: number;
   no_anggota: string;
   nama: string;
+  status_pekerjaan: string | null;
   jenis_simpanan: string;
   jumlah: number;
   tanggal_simpanan: string;
@@ -69,6 +70,7 @@ export default function BendaharaSimpananPage() {
   const labelJenis = (jenis: string) => {
     if (jenis === "lebaran") return "Lebaran";
     if (jenis === "pendidikan") return "Pendidikan";
+    if (jenis === "sukarela") return "Sukarela";
     return "Wajib";
   };
 
@@ -97,6 +99,7 @@ export default function BendaharaSimpananPage() {
     const user = getCurrentUser();
     if (!user) return void router.push("/");
     if (user.role !== "bendahara" && user.role !== "admin") return void router.push("/dashboard");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(user);
     loadData();
   }, [router]);
@@ -154,27 +157,6 @@ export default function BendaharaSimpananPage() {
     }
   };
 
-  const handleStatusChange = async (
-    item: SimpananItem,
-    status: "aktif" | "nonaktif",
-  ) => {
-    const response = await fetch("/api/simpanan", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: item.id,
-        id_anggota: item.id_anggota,
-        jenis_simpanan: item.jenis_simpanan,
-        jumlah: item.jumlah,
-        status,
-      }),
-    });
-
-    if (response.ok) {
-      loadData();
-    }
-  };
-
   const handleTambahSimpanan = async () => {
     setFormData({ id_anggota: "", jenis_simpanan: "wajib", jumlah: "", status: "aktif" });
     setEditingItem(null);
@@ -195,6 +177,7 @@ export default function BendaharaSimpananPage() {
           id_anggota: Number(formData.id_anggota),
           jenis_simpanan: formData.jenis_simpanan,
           jumlah: Number(formData.jumlah),
+          status: formData.status,
         }),
       });
 
@@ -238,7 +221,7 @@ export default function BendaharaSimpananPage() {
     jenis_simpanan: labelJenis(item.jenis_simpanan),
     nominal: Number(item.jumlah || 0),
     tanggal: new Date(item.tanggal_simpanan).toLocaleDateString("id-ID"),
-    status: item.status,
+    status: item.status_pekerjaan || "-",
   }));
   const exportTitle = `Simpanan ${jenisFilter === "semua" ? "Semua Jenis" : labelJenis(jenisFilter)}`;
   const exportFileName = `simpanan_${jenisFilter}_${nasabahFilter}_${range}`;
@@ -427,6 +410,7 @@ export default function BendaharaSimpananPage() {
                 <option value="wajib">Simpanan Wajib</option>
                 <option value="lebaran">Simpanan Lebaran</option>
                 <option value="pendidikan">Simpanan Pendidikan</option>
+                <option value="sukarela">Simpanan Sukarela</option>
               </select>
               <select
                 value={nasabahFilter}
@@ -488,16 +472,8 @@ export default function BendaharaSimpananPage() {
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            item.status === "aktif"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : item.status === "ditarik"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-slate-100 text-slate-700"
-                          }`}
-                        >
-                          {item.status}
+                        <span className="text-sm font-medium text-slate-700">
+                          {item.status_pekerjaan || "-"}
                         </span>
                       </td>
                       <td className="px-6 py-4">
@@ -508,21 +484,6 @@ export default function BendaharaSimpananPage() {
                           >
                             Edit
                           </button>
-                          {item.status === "aktif" ? (
-                            <button
-                              onClick={() => handleStatusChange(item, "nonaktif")}
-                              className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-200"
-                            >
-                              Nonaktifkan
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => handleStatusChange(item, "aktif")}
-                              className="rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-200"
-                            >
-                              Aktifkan
-                            </button>
-                          )}
                           <button
                             onClick={() => handleDelete(item)}
                             className="rounded-lg bg-red-100 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-200"
@@ -577,6 +538,7 @@ export default function BendaharaSimpananPage() {
                 <option value="wajib">Wajib</option>
                 <option value="lebaran">Lebaran</option>
                 <option value="pendidikan">Pendidikan</option>
+                <option value="sukarela">Sukarela</option>
               </select>
               <input
                 type="number"
@@ -625,6 +587,7 @@ export default function BendaharaSimpananPage() {
                 <option value="wajib">Wajib</option>
                 <option value="lebaran">Lebaran</option>
                 <option value="pendidikan">Pendidikan</option>
+                <option value="sukarela">Sukarela</option>
               </select>
               <input
                 type="number"
@@ -633,15 +596,6 @@ export default function BendaharaSimpananPage() {
                 className="w-full rounded-lg border border-slate-200 px-4 py-2"
                 required
               />
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2"
-              >
-                <option value="aktif">Aktif</option>
-                <option value="nonaktif">Nonaktif</option>
-                <option value="ditarik">Ditarik</option>
-              </select>
               <div className="flex gap-3">
                 <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 rounded-lg border border-slate-200 px-4 py-2">
                   Batal

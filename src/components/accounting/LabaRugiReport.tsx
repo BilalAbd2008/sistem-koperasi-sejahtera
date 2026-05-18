@@ -27,20 +27,21 @@ const formatCurrency = (value: number) =>
 
 export default function LabaRugiReport() {
   const [data, setData] = useState<IncomeStatementData | null>(null);
-  const [periode, setPeriode] = useState(
-    `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`,
-  );
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const [loading, setLoading] = useState(false);
-  const [system, setSystem] = useState<"new" | "old" | "all">("old");
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ periode, system });
+      const params = new URLSearchParams({
+        periode_awal: `${year}-01-01`,
+        periode_akhir: `${year}-12-31`,
+        system: "old",
+      });
       const res = await fetch(`/api/laporan-keuangan/laba-rugi?${params}`);
       const result = await res.json();
       const payload = result.data || {};
-      setData(system === "new" ? payload.new : payload.old || payload.new);
+      setData(payload.old || null);
     } catch (error) {
       console.error("Error fetching data:", error);
       alert("Error loading report: " + String(error));
@@ -50,7 +51,9 @@ export default function LabaRugiReport() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePrint = () => window.print();
@@ -74,7 +77,7 @@ export default function LabaRugiReport() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Laporan Laba Rugi</h1>
-          <p className="mt-1 text-sm text-slate-500">Periode: {data.periode}</p>
+          <p className="mt-1 text-sm text-slate-500">Tahun: {year}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -96,27 +99,14 @@ export default function LabaRugiReport() {
 
       <div className="mb-6 flex flex-wrap gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">Periode</label>
+          <label className="mb-1 block text-sm font-semibold text-slate-700">Tahun</label>
           <input
-            type="text"
-            value={periode}
-            onChange={(event) => setPeriode(event.target.value)}
-            placeholder="2026-05"
+            type="number"
+            value={year}
+            onChange={(event) => setYear(event.target.value)}
+            placeholder="2026"
             className="rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
           />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">Sistem</label>
-          <select
-            value={system}
-            onChange={(event) => setSystem(event.target.value as "new" | "old" | "all")}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
-          >
-            <option value="old">Sistem Lama (Legacy)</option>
-            <option value="new">Sistem Baru (Modern)</option>
-            <option value="all">Gabungan</option>
-          </select>
         </div>
 
         <button
@@ -236,7 +226,7 @@ export default function LabaRugiReport() {
       <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-slate-700">
         <p>
           <strong>Catatan:</strong> Laporan laba rugi mengikuti transaksi simpan pinjam
-          pada periode {data.periode} dan dapat diverifikasi melalui buku besar.
+          pada tahun {year}. Laba rugi dihitung dari 1 Januari sampai 31 Desember, sehingga perhitungan dimulai ulang setiap awal tahun.
         </p>
       </div>
     </div>

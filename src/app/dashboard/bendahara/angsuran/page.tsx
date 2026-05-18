@@ -31,11 +31,20 @@ interface AnggotaItem {
   nama: string;
 }
 
-const periodOptions = [
-  { value: "semua", label: "Semua periode" },
-  { value: "bulan-ini", label: "Bulan ini" },
-  { value: "bulan-lalu", label: "Bulan lalu" },
-  { value: "tahun-ini", label: "Tahun ini" },
+const monthOptions = [
+  { value: "semua", label: "Semua bulan" },
+  { value: "0", label: "Januari" },
+  { value: "1", label: "Februari" },
+  { value: "2", label: "Maret" },
+  { value: "3", label: "April" },
+  { value: "4", label: "Mei" },
+  { value: "5", label: "Juni" },
+  { value: "6", label: "Juli" },
+  { value: "7", label: "Agustus" },
+  { value: "8", label: "September" },
+  { value: "9", label: "Oktober" },
+  { value: "10", label: "November" },
+  { value: "11", label: "Desember" },
 ];
 
 const formatMoney = (value: number) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
@@ -52,13 +61,15 @@ export default function BendaharaAngsuranPage() {
   const [anggotaMap, setAnggotaMap] = useState<Record<number, string>>({});
   const [search, setSearch] = useState("");
   const [nasabahFilter, setNasabahFilter] = useState("semua");
-  const [periodFilter, setPeriodFilter] = useState("semua");
+  const [monthFilter, setMonthFilter] = useState("semua");
+  const [yearFilter, setYearFilter] = useState(String(new Date().getFullYear()));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const currentUser = getCurrentUser();
     if (!currentUser) return void router.push("/");
     if (currentUser.role !== "bendahara") return void router.push("/dashboard");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(currentUser);
 
     Promise.all([fetch("/api/pembayaran-pinjaman"), fetch("/api/anggota")])
@@ -90,9 +101,15 @@ export default function BendaharaAngsuranPage() {
     return Array.from(map, ([id, nama]) => ({ id, nama }));
   }, [anggotaMap, angsuran]);
 
-  const filteredRows = useMemo(() => {
-    const now = new Date();
+  const yearOptions = useMemo(() => {
+    const years = new Set(
+      angsuran.map((item) => String(makeLocalDate(item.tanggal_bayar).getFullYear())),
+    );
+    years.add(String(new Date().getFullYear()));
+    return Array.from(years).sort((a, b) => Number(b) - Number(a));
+  }, [angsuran]);
 
+  const filteredRows = useMemo(() => {
     return angsuran.filter((item) => {
       const paymentDate = makeLocalDate(item.tanggal_bayar);
       const name = item.nama || anggotaMap[item.id_anggota] || "";
@@ -102,23 +119,14 @@ export default function BendaharaAngsuranPage() {
       const matchesNasabah =
         nasabahFilter === "semua" || String(item.id_anggota) === nasabahFilter;
 
-      let matchesPeriod = true;
-      if (periodFilter === "bulan-ini") {
-        matchesPeriod =
-          paymentDate.getMonth() === now.getMonth() &&
-          paymentDate.getFullYear() === now.getFullYear();
-      } else if (periodFilter === "bulan-lalu") {
-        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        matchesPeriod =
-          paymentDate.getMonth() === lastMonth.getMonth() &&
-          paymentDate.getFullYear() === lastMonth.getFullYear();
-      } else if (periodFilter === "tahun-ini") {
-        matchesPeriod = paymentDate.getFullYear() === now.getFullYear();
-      }
+      const matchesMonth =
+        monthFilter === "semua" || paymentDate.getMonth() === Number(monthFilter);
+      const matchesYear =
+        yearFilter === "semua" || paymentDate.getFullYear() === Number(yearFilter);
 
-      return matchesSearch && matchesNasabah && matchesPeriod;
+      return matchesSearch && matchesNasabah && matchesMonth && matchesYear;
     });
-  }, [anggotaMap, angsuran, nasabahFilter, periodFilter, search]);
+  }, [anggotaMap, angsuran, monthFilter, nasabahFilter, search, yearFilter]);
 
   const buildExportRows = () =>
     filteredRows.map((item) => ({
@@ -154,7 +162,11 @@ export default function BendaharaAngsuranPage() {
       14,
       38,
     );
-    doc.text(`Periode: ${periodOptions.find((item) => item.value === periodFilter)?.label || "Semua"}`, 14, 44);
+    doc.text(
+      `Periode: ${monthOptions.find((item) => item.value === monthFilter)?.label || "Semua bulan"} ${yearFilter === "semua" ? "" : yearFilter}`,
+      14,
+      44,
+    );
     doc.text(`Total pembayaran pokok: ${formatMoney(totalPembayaran)}`, 14, 50);
 
     const headers = ["Tanggal", "Nasabah", "No Anggota", "Pinjaman", "Bayar Pokok", "Sisa Pokok", "Tagih", "Keterangan"];
@@ -243,7 +255,7 @@ export default function BendaharaAngsuranPage() {
                 </button>
               </div>
             </div>
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
+            <div className="mt-5 grid gap-3 md:grid-cols-4">
               <input
                 type="text"
                 value={search}
@@ -264,13 +276,25 @@ export default function BendaharaAngsuranPage() {
                 ))}
               </select>
               <select
-                value={periodFilter}
-                onChange={(event) => setPeriodFilter(event.target.value)}
+                value={monthFilter}
+                onChange={(event) => setMonthFilter(event.target.value)}
                 className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-900"
               >
-                {periodOptions.map((item) => (
+                {monthOptions.map((item) => (
                   <option key={item.value} value={item.value}>
                     {item.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={yearFilter}
+                onChange={(event) => setYearFilter(event.target.value)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-900"
+              >
+                <option value="semua">Semua tahun</option>
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
                   </option>
                 ))}
               </select>
