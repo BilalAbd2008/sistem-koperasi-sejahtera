@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import BendaharaSidebar from "@/components/BendaharaSidebar";
 
 interface UserData {
@@ -31,11 +32,10 @@ export default function BendaharaPengaturanPage() {
   });
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) return void router.push("/");
-    const parsedUser = JSON.parse(userData) as UserData;
-    if (parsedUser.role !== "bendahara") return void router.push("/dashboard");
-    setUser(parsedUser);
+    const user = getCurrentUser();
+    if (!user) return void router.push("/");
+    if (user.role !== "bendahara" && user.role !== "admin") return void router.push("/dashboard");
+    setUser(user);
     fetch("/api/pengaturan")
       .then((res) => res.json())
       .then((data) => {
@@ -63,10 +63,10 @@ export default function BendaharaPengaturanPage() {
       </div>
     );
   return (
-    <div className="h-screen overflow-hidden bg-slate-100">
+    <div className="min-h-screen overflow-y-auto bg-slate-100">
       <div className="flex h-full">
         <BendaharaSidebar user={user} />
-        <main className="flex-1 overflow-hidden bg-slate-50 px-8 py-6">
+        <main className="flex-1 overflow-y-auto bg-slate-50 px-8 py-6">
           <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-slate-500">
               Pengaturan Sistem

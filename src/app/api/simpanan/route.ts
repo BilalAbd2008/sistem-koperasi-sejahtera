@@ -1,5 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { 
+  addBalancedJournal, 
+  savingJournal,
+  postJournalEntry,
+  createSavingJournalEntry 
+} from "@/lib/accounting";
+import type { PoolConnection } from "mysql2/promise";
+
+let savingTypeMigrationPromise: Promise<void> | null = null;
+
+async function ensureSavingTypes(connection: PoolConnection) {
+  if (!savingTypeMigrationPromise) {
+    savingTypeMigrationPromise = (async () => {
+      await connection.query(
+        "ALTER TABLE simpanan MODIFY jenis_simpanan VARCHAR(50) NOT NULL",
+      );
+      await connection.query(
+        "UPDATE simpanan SET jenis_simpanan = 'wajib' WHERE jenis_simpanan = 'pokok'",
+      );
+      await connection.query(
+        "UPDATE simpanan SET jenis_simpanan = 'lebaran' WHERE jenis_simpanan = 'sukarela'",
+      );
+      await connection.query(
+        "ALTER TABLE simpanan MODIFY jenis_simpanan ENUM('wajib', 'lebaran', 'pendidikan') NOT NULL",
+      );
+      await connection.query(
+        "ALTER TABLE simpanan MODIFY status ENUM('aktif', 'nonaktif', 'ditarik') DEFAULT 'aktif'",
+      );
+    })();
+  }
+
+  await savingTypeMigrationPromise;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,6 +40,7 @@ export async function GET(request: NextRequest) {
     const id_anggota = searchParams.get("id_anggota");
 
     const connection = await pool.getConnection();
+    await ensureSavingTypes(connection);
 
     let query = `
       SELECT s.*, a.nama, a.no_anggota 
@@ -40,23 +74,64 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { id_anggota, jenis_simpanan, jumlah } = await request.json();
+    const { id_anggota, jenis_simpanan, jumlah, idPengguna } = await request.json();
 
     const connection = await pool.getConnection();
-    await connection.query(
-      "INSERT INTO simpanan (id_anggota, jenis_simpanan, jumlah, tanggal_simpanan) VALUES (?, ?, ?, NOW())",
-      [id_anggota, jenis_simpanan, jumlah],
-    );
-    connection.release();
+    try {
+      await ensureSavingTypes(connection);
+      await connection.beginTransaction();
+
+      // Insert ke tabel simpanan
+      const [result] = await connection.query(
+        "INSERT INTO simpanan (id_anggota, jenis_simpanan, jumlah, tanggal_simpanan) VALUES (?, ?, ?, NOW())",
+        [id_anggota, jenis_simpanan, jumlah],
+      );
+      const idSimpanan = (result as any).insertId;
+
+      // Legacy: Insert ke transaksi_lain untuk backward compatibility
+      await addBalancedJournal(
+        connection,
+        savingJournal(Number(id_anggota), jenis_simpanan, Number(jumlah)),
+      );
+
+      // Modern: Create journal entry ke jurnal_umum system
+      // Get current period (YYYY-MM)
+      const now = new Date();
+      const periode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+      try {
+        const modernJournal = createSavingJournalEntry(
+          Number(id_anggota),
+          jenis_simpanan as "wajib" | "lebaran" | "pendidikan",
+          Number(jumlah),
+          now,
+          periode,
+          idPengguna || 1,
+          idSimpanan,
+        );
+
+        await postJournalEntry(connection, modernJournal);
+      } catch (journalError) {
+        // Log journal error tapi jangan rollback transaksi simpanan
+        console.warn("Modern journal entry failed (non-blocking):", journalError);
+      }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return NextResponse.json({
       success: true,
-      message: "Simpanan berhasil ditambahkan",
+      message: "Simpanan berhasil ditambahkan (dicatat ke jurnal akuntansi)",
     });
   } catch (error) {
     console.error("Create simpanan error:", error);
     return NextResponse.json(
-      { error: "Terjadi kesalahan server" },
+      { error: String(error) },
       { status: 500 },
     );
   }
@@ -68,6 +143,7 @@ export async function PUT(request: NextRequest) {
       await request.json();
 
     const connection = await pool.getConnection();
+    await ensureSavingTypes(connection);
     await connection.query(
       "UPDATE simpanan SET id_anggota = ?, jenis_simpanan = ?, jumlah = ?, status = ? WHERE id = ?",
       [id_anggota, jenis_simpanan, jumlah, status, id],

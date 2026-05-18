@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import BendaharaSidebar from "@/components/BendaharaSidebar";
 
 interface UserData {
@@ -17,6 +18,7 @@ interface AnggotaItem {
   email: string;
   no_telepon: string;
   alamat: string;
+  status_pekerjaan: string | null;
   status: string;
 }
 
@@ -34,6 +36,7 @@ export default function BendaharaAnggotaPage() {
     email: "",
     no_telepon: "",
     alamat: "",
+    status_pekerjaan: "",
     status: "aktif",
   });
 
@@ -52,11 +55,10 @@ export default function BendaharaAnggotaPage() {
   };
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) return void router.push("/");
-    const parsedUser = JSON.parse(userData) as UserData;
-    if (parsedUser.role !== "bendahara") return void router.push("/dashboard");
-    setUser(parsedUser);
+    const user = getCurrentUser();
+    if (!user) return void router.push("/");
+    if (user.role !== "bendahara" && user.role !== "admin") return void router.push("/dashboard");
+    setUser(user);
     loadData();
   }, [router]);
 
@@ -67,6 +69,7 @@ export default function BendaharaAnggotaPage() {
       email: item.email,
       no_telepon: item.no_telepon,
       alamat: item.alamat,
+      status_pekerjaan: item.status_pekerjaan || "",
       status: item.status,
     });
     setShowEditModal(true);
@@ -89,7 +92,7 @@ export default function BendaharaAnggotaPage() {
         loadData();
         setShowEditModal(false);
         setEditingAnggota(null);
-        setFormData({ nama: "", email: "", no_telepon: "", alamat: "", status: "aktif" });
+        setFormData({ nama: "", email: "", no_telepon: "", alamat: "", status_pekerjaan: "", status: "aktif" });
       }
     } catch (error) {
       console.error("Error updating anggota:", error);
@@ -112,7 +115,7 @@ export default function BendaharaAnggotaPage() {
   };
 
   const handleTambahAnggota = async () => {
-    setFormData({ nama: "", email: "", no_telepon: "", alamat: "", status: "aktif" });
+    setFormData({ nama: "", email: "", no_telepon: "", alamat: "", status_pekerjaan: "", status: "aktif" });
     setEditingAnggota(null);
     setShowTambahModal(true);
   };
@@ -131,32 +134,17 @@ export default function BendaharaAnggotaPage() {
       if (response.ok) {
         loadData();
         setShowTambahModal(false);
-        setFormData({ nama: "", email: "", no_telepon: "", alamat: "", status: "aktif" });
+        setFormData({ nama: "", email: "", no_telepon: "", alamat: "", status_pekerjaan: "", status: "aktif" });
       }
     } catch (error) {
       console.error("Error creating anggota:", error);
     }
   };
 
-  const handleNonaktifkan = async (item: AnggotaItem) => {
-    const response = await fetch("/api/anggota", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...item,
-        status: "nonaktif",
-      }),
-    });
-
-    if (response.ok) {
-      loadData();
-    }
-  };
-
   if (!user)
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950 text-white">
-        Memuat data anggota...
+        Memuat data nasabah...
       </div>
     );
 
@@ -165,23 +153,24 @@ export default function BendaharaAnggotaPage() {
     return (
       item.nama.toLowerCase().includes(q) ||
       item.no_anggota.toLowerCase().includes(q) ||
-      item.no_telepon.toLowerCase().includes(q)
+      item.no_telepon.toLowerCase().includes(q) ||
+      (item.status_pekerjaan || "").toLowerCase().includes(q)
     );
   });
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-100">
+    <div className="min-h-screen overflow-y-auto bg-slate-100">
       <div className="flex h-full">
         <BendaharaSidebar user={user} />
-        <main className="flex-1 overflow-hidden bg-slate-50 px-8 py-6">
+        <main className="flex-1 overflow-y-auto bg-slate-50 px-8 py-6">
           <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-semibold text-slate-500">
-                  Data Anggota
+                  Master Data Nasabah
                 </p>
                 <h1 className="text-2xl font-bold text-slate-900">
-                  Data Anggota
+                  Data Nasabah Simpan Pinjam
                 </h1>
               </div>
               <button
@@ -189,14 +178,14 @@ export default function BendaharaAnggotaPage() {
                 onClick={handleTambahAnggota}
                 className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
               >
-                + Tambah Anggota
+                + Tambah Nasabah
               </button>
             </div>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2"
-              placeholder="Cari anggota..."
+              placeholder="Cari nasabah..."
             />
           </div>
           <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -209,7 +198,7 @@ export default function BendaharaAnggotaPage() {
                     <th className="px-6 py-4">Nama</th>
                     <th className="px-6 py-4">Email</th>
                     <th className="px-6 py-4">No. HP</th>
-                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Status Pekerjaan</th>
                     <th className="px-6 py-4">Aksi</th>
                   </tr>
                 </thead>
@@ -217,7 +206,7 @@ export default function BendaharaAnggotaPage() {
                   {(loading ? [] : filtered).map((item, index) => (
                     <tr key={item.id} className="border-t border-slate-100">
                       <td className="px-6 py-4 text-slate-700">{index + 1}</td>
-                      <td className="px-6 py-4 font-medium text-slate-900">
+                      <td className="whitespace-nowrap px-6 py-4 font-medium text-slate-900">
                         {item.no_anggota}
                       </td>
                       <td className="px-6 py-4 text-slate-700">{item.nama}</td>
@@ -225,12 +214,8 @@ export default function BendaharaAnggotaPage() {
                       <td className="px-6 py-4 text-slate-700">
                         {item.no_telepon}
                       </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${item.status === "aktif" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}`}
-                        >
-                          {item.status}
-                        </span>
+                      <td className="px-6 py-4 text-slate-700">
+                        {item.status_pekerjaan || "-"}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
@@ -240,14 +225,6 @@ export default function BendaharaAnggotaPage() {
                           >
                             Edit
                           </button>
-                          {item.status === "aktif" && (
-                            <button
-                              onClick={() => handleNonaktifkan(item)}
-                              className="rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-200"
-                            >
-                              Nonaktifkan
-                            </button>
-                          )}
                           <button
                             onClick={() => handleDelete(item)}
                             className="rounded-lg bg-red-100 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-200"
@@ -269,8 +246,17 @@ export default function BendaharaAnggotaPage() {
       {showTambahModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-96 p-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-4">Tambah Anggota Baru</h2>
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Tambah Nasabah Baru</h2>
             <form onSubmit={handleTambahSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">No. Anggota</label>
+                <input
+                  type="text"
+                  value="Dibuat otomatis"
+                  className="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-slate-500"
+                  disabled
+                />
+              </div>
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Nama</label>
                 <input
@@ -312,6 +298,16 @@ export default function BendaharaAnggotaPage() {
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Status Pekerjaan</label>
+                <input
+                  type="text"
+                  value={formData.status_pekerjaan}
+                  onChange={(e) => setFormData({ ...formData, status_pekerjaan: e.target.value })}
+                  placeholder="Contoh: Karyawan, Wiraswasta, Pensiunan"
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
               <div className="flex gap-3 pt-4">
                 <button
                   type="button"
@@ -336,7 +332,7 @@ export default function BendaharaAnggotaPage() {
       {showEditModal && editingAnggota && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-96 p-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-4">Edit Anggota</h2>
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Edit Nasabah</h2>
             <form onSubmit={handleEditSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Nama</label>
@@ -376,15 +372,14 @@ export default function BendaharaAnggotaPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Status Pekerjaan</label>
+                <input
+                  type="text"
+                  value={formData.status_pekerjaan}
+                  onChange={(e) => setFormData({ ...formData, status_pekerjaan: e.target.value })}
+                  placeholder="Contoh: Karyawan, Wiraswasta, Pensiunan"
                   className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500"
-                >
-                  <option value="aktif">Aktif</option>
-                  <option value="nonaktif">Nonaktif</option>
-                </select>
+                />
               </div>
               <div className="flex gap-3 pt-4">
                 <button

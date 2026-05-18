@@ -61,8 +61,8 @@ export async function POST() {
     await connection.query(
       `INSERT INTO simpanan (id_anggota, jenis_simpanan, jumlah, tanggal_simpanan, status) VALUES
        (?, 'wajib', 100000, '2025-05-01', 'aktif'),
-       (?, 'pokok', 200000, '2025-04-01', 'aktif'),
-       (?, 'sukarela', 150000, '2025-03-20', 'aktif'),
+       (?, 'lebaran', 200000, '2025-04-01', 'aktif'),
+       (?, 'pendidikan', 150000, '2025-03-20', 'aktif'),
        (?, 'wajib', 100000, '2025-02-10', 'aktif'),
        (?, 'wajib', 100000, '2025-01-08', 'aktif')`,
       [

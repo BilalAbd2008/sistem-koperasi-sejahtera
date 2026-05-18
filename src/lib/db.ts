@@ -38,6 +38,20 @@ async function bootstrapPool() {
       const schemaSql = await fs.readFile(schemaPath, "utf8");
       await adminConnection.query(`USE \`${databaseName}\`; ${schemaSql}`);
     }
+
+    const [accountingRows] = await adminConnection.query<mysql.RowDataPacket[]>(
+      "SELECT COUNT(*) AS tableCount FROM information_schema.tables WHERE table_schema = ? AND table_name = 'rekening'",
+      [databaseName],
+    );
+
+    if (Number(accountingRows[0]?.tableCount || 0) === 0) {
+      const extensionPath = path.join(
+        process.cwd(),
+        "database_schema_accounting_extension.sql",
+      );
+      const extensionSql = await fs.readFile(extensionPath, "utf8");
+      await adminConnection.query(`USE \`${databaseName}\`; ${extensionSql}`);
+    }
   } finally {
     await adminConnection.end();
   }

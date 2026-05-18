@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCurrentUser, logout } from "@/lib/auth";
 import Link from "next/link";
 import Sidebar from "@/components/Sidebar";
 
@@ -14,7 +15,10 @@ interface DashboardStats {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{
+    nama_lengkap: string;
+    role: string;
+  } | null>(null);
   const [stats, setStats] = useState<DashboardStats>({
     totalMembers: 0,
     totalSavings: 0,
@@ -22,29 +26,6 @@ export default function DashboardPage() {
     totalInterest: 0,
   });
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) {
-      router.push("/");
-      return;
-    }
-    const parsedUser = JSON.parse(userData);
-
-    if (parsedUser.role === "anggota") {
-      router.push("/dashboard/anggota");
-      return;
-    }
-
-    if (parsedUser.role === "bendahara") {
-      router.push("/dashboard/bendahara");
-      return;
-    }
-
-    setUser(parsedUser);
-
-    fetchStats();
-  }, []);
 
   const fetchStats = async () => {
     try {
@@ -60,18 +41,42 @@ export default function DashboardPage() {
     }
   };
 
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (!user) {
+      router.push("/");
+      return;
+    }
+
+    if (user.role === "anggota") {
+      router.push("/");
+      return;
+    }
+
+    if (user.role === "bendahara") {
+      router.push("/dashboard/bendahara");
+      return;
+    }
+
+    // The dashboard entry route is only for admin-like roles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUser(user);
+
+    fetchStats();
+  }, [router]);
+
   const handleLogout = () => {
-    localStorage.removeItem("user");
+    logout();
     router.push("/");
   };
 
   if (!user) return <div>Loading...</div>;
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex min-h-screen bg-gray-100">
       <Sidebar user={user} onLogout={handleLogout} />
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto">
         {/* Header */}
         <div className="bg-white shadow-sm p-6 border-b border-gray-200">
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>

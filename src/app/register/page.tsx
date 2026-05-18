@@ -35,8 +35,7 @@ export default function RegisterPage() {
         return;
       }
 
-      localStorage.setItem("user", JSON.stringify(data.user));
-      router.push("/dashboard/anggota");
+      router.push("/?registered=true");
     } catch {
       setError("Terjadi kesalahan server");
     } finally {

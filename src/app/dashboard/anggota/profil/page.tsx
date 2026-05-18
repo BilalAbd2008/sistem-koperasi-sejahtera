@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import MemberSidebar from "@/components/MemberSidebar";
 
 interface UserData {
@@ -41,30 +42,29 @@ export default function AnggotaProfilPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) {
+    const user = getCurrentUser();
+    if (!user) {
       router.push("/");
       return;
     }
 
-    const parsedUser = JSON.parse(userData) as UserData;
-    if (parsedUser.role !== "anggota") {
+    if (user.role !== "anggota") {
       router.push("/dashboard");
       return;
     }
 
-    if (!parsedUser.anggota_id) {
+    if (!user.anggota_id) {
       setError("Data anggota tidak ditemukan. Silakan login ulang.");
       setLoading(false);
       return;
     }
 
-    setUser(parsedUser);
+    setUser(user);
 
     const loadProfile = async () => {
       try {
         const response = await fetch(
-          `/api/anggota/profile?user_id=${parsedUser.id}&anggota_id=${parsedUser.anggota_id}`,
+          `/api/anggota/profile?user_id=${user.id}&anggota_id=${user.anggota_id}`,
         );
         const data = await response.json();
 
@@ -150,10 +150,10 @@ export default function AnggotaProfilPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-100">
-      <div className="flex h-full">
+    <div className="min-h-screen overflow-y-auto bg-slate-100">
+      <div className="flex min-h-screen">
         <MemberSidebar user={user} />
-        <main className="flex-1 overflow-hidden bg-slate-50 px-8 py-6">
+        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-50 px-8 py-6">
           <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-slate-500">Profil (Anggota)</p>
             <h1 className="text-2xl font-bold text-slate-900">Profil Saya</h1>

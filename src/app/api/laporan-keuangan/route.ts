@@ -1,35 +1,136 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 
+type TrialBalanceRow = {
+  akun: string;
+  debit: number | string | null;
+  kredit: number | string | null;
+};
+
+const assetAccounts = new Set(["Kas", "Piutang Pinjaman", "Piutang Bunga"]);
+const liabilityAccounts = new Set([
+  "Simpanan Pokok",
+  "Simpanan Wajib",
+  "Simpanan Sukarela",
+]);
+const revenueAccounts = new Set(["Pendapatan Bunga"]);
+
+function toNumber(value: number | string | null | undefined) {
+  return Number(value || 0);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const periode_awal = searchParams.get("periode_awal");
     const periode_akhir = searchParams.get("periode_akhir");
+    const tipe = searchParams.get("tipe") || "ringkasan";
 
     const connection = await pool.getConnection();
 
-    let query = "SELECT * FROM laporan_keuangan WHERE 1=1";
-    let params: any[] = [];
+    const params: unknown[] = [];
+    const conditions: string[] = [];
 
     if (periode_awal) {
-      query += " AND periode_awal >= ?";
+      conditions.push("tanggal_transaksi >= ?");
       params.push(periode_awal);
     }
 
     if (periode_akhir) {
-      query += " AND periode_akhir <= ?";
+      conditions.push("tanggal_transaksi <= ?");
       params.push(periode_akhir);
     }
 
-    query += " ORDER BY periode_akhir DESC";
+    const whereClause = conditions.length
+      ? `WHERE ${conditions.join(" AND ")}`
+      : "";
 
-    const [laporan] = await connection.query(query, params);
+    const [trialRows] = await connection.query(
+      `
+        SELECT
+          jenis_transaksi AS akun,
+          SUM(CASE WHEN tipe = 'debit' THEN jumlah ELSE 0 END) AS debit,
+          SUM(CASE WHEN tipe = 'kredit' THEN jumlah ELSE 0 END) AS kredit
+        FROM transaksi_lain
+        ${whereClause}
+        GROUP BY jenis_transaksi
+        ORDER BY jenis_transaksi
+      `,
+      params,
+    );
+
+    const trialBalance = (trialRows as TrialBalanceRow[]).map((row) => ({
+      akun: row.akun,
+      debit: toNumber(row.debit),
+      kredit: toNumber(row.kredit),
+      saldo: toNumber(row.debit) - toNumber(row.kredit),
+    }));
+
+    const assets = trialBalance
+      .filter((row) => assetAccounts.has(row.akun))
+      .map((row) => ({ ...row, saldo: row.saldo }));
+    const liabilities = trialBalance
+      .filter((row) => liabilityAccounts.has(row.akun))
+      .map((row) => ({ ...row, saldo: Math.abs(row.saldo) }));
+    const revenues = trialBalance
+      .filter((row) => revenueAccounts.has(row.akun))
+      .map((row) => ({ ...row, saldo: Math.abs(row.saldo) }));
+    const expenses = trialBalance
+      .filter(
+        (row) =>
+          !assetAccounts.has(row.akun) &&
+          !liabilityAccounts.has(row.akun) &&
+          !revenueAccounts.has(row.akun),
+      )
+      .filter((row) => row.saldo > 0);
+
+    const totalAssets = assets.reduce((sum, row) => sum + row.saldo, 0);
+    const totalLiabilities = liabilities.reduce(
+      (sum, row) => sum + row.saldo,
+      0,
+    );
+    const totalRevenue = revenues.reduce((sum, row) => sum + row.saldo, 0);
+    const totalExpenses = expenses.reduce((sum, row) => sum + row.saldo, 0);
+    const netIncome = totalRevenue - totalExpenses;
+
+    const [savedReports] = await connection.query(
+      "SELECT * FROM laporan_keuangan ORDER BY periode_akhir DESC",
+    );
     connection.release();
 
     return NextResponse.json({
       success: true,
-      data: laporan,
+      tipe,
+      data: savedReports,
+      summary: {
+        totalAssets,
+        totalLiabilities,
+        totalEquity: totalAssets - totalLiabilities,
+        totalRevenue,
+        totalExpenses,
+        netIncome,
+        totalDebit: trialBalance.reduce((sum, row) => sum + row.debit, 0),
+        totalKredit: trialBalance.reduce((sum, row) => sum + row.kredit, 0),
+      },
+      reports: {
+        trialBalance,
+        bsAssets: assets,
+        bsLiabilitiesEquity: [
+          ...liabilities,
+          {
+            akun: "Ekuitas / SHU Berjalan",
+            debit: 0,
+            kredit: netIncome,
+            saldo: totalAssets - totalLiabilities,
+          },
+        ],
+        profitLoss: [...revenues, ...expenses],
+        balanceSheet: {
+          assets,
+          liabilities,
+          equity: totalAssets - totalLiabilities,
+        },
+      },
     });
   } catch (error) {
     console.error("Get laporan error:", error);

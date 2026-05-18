@@ -1,16 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+
+  useEffect(() => {
+    if (searchParams.get("registered") === "true") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSuccess("Registrasi berhasil! Silakan login dengan akun Anda.");
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,20 +29,25 @@ export default function LoginPage() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role }),
+        body: JSON.stringify({ username, password, role: "bendahara" }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem("user", JSON.stringify(data.user));
-        router.push(
-          data.user.role === "anggota"
-            ? "/dashboard/anggota"
-            : data.user.role === "bendahara"
-              ? "/dashboard/bendahara"
-              : "/dashboard",
+        // Support multi-user/multi-role login
+        const users = JSON.parse(localStorage.getItem("users") || "[]") as Array<{ role: string }>;
+        const existingIndex = users.findIndex(
+          (u) => u.role === data.user.role,
         );
+        if (existingIndex !== -1) {
+          users[existingIndex] = data.user;
+        } else {
+          users.push(data.user);
+        }
+        localStorage.setItem("users", JSON.stringify(users));
+        localStorage.setItem("currentRole", data.user.role);
+        router.push("/dashboard/bendahara");
       } else {
         setError(data.error || "Login gagal");
       }
@@ -46,7 +59,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="h-screen overflow-hidden bg-[#f5f7fb] px-4 py-4 font-(family-name:--font-geist-sans) md:px-8 md:py-6">
+    <main className="min-h-screen overflow-y-auto bg-[#f5f7fb] px-4 py-4 font-(family-name:--font-geist-sans) md:px-8 md:py-6">
       <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-center rounded-3xl border border-slate-200 bg-white/80 p-4 shadow-[0_25px_60px_-35px_rgba(15,23,42,0.35)] backdrop-blur md:gap-14 md:p-8 lg:p-10">
         <section className="hidden w-full max-w-xl md:block md:text-left">
           <div className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600 shadow-inner shadow-emerald-100">
@@ -129,6 +142,11 @@ export default function LoginPage() {
           </h2>
 
           <form onSubmit={handleLogin} className="mt-6 space-y-5">
+            {success && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+                {success}
+              </div>
+            )}
             {error && (
               <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
                 {error}
@@ -208,35 +226,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Pilih Role (optional)
-              </label>
-              <div className="relative">
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  required
-                  className="h-12 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
-                >
-                  <option value="" disabled>
-                    Pilih role
-                  </option>
-                  <option value="anggota">Anggota</option>
-                  <option value="admin">Admin</option>
-                  <option value="bendahara">Bendahara</option>
-                  <option value="pengurus">Pengurus</option>
-                </select>
-                <svg
-                  className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path d="M5.2 7.7a1 1 0 0 1 1.4 0L10 11l3.4-3.3a1 1 0 1 1 1.4 1.4l-4.1 4a1 1 0 0 1-1.4 0l-4.1-4a1 1 0 0 1 0-1.4Z" />
-                </svg>
-              </div>
-            </div>
-
             <button
               type="submit"
               disabled={loading}
@@ -245,19 +234,23 @@ export default function LoginPage() {
               {loading ? "Memproses..." : "Login"}
             </button>
 
-            <p className="text-center text-sm text-slate-600">
-              Belum punya akun?{" "}
-              <button
-                type="button"
-                onClick={() => router.push("/register")}
-                className="font-semibold text-emerald-600 hover:text-emerald-700"
-              >
-                Daftar sebagai anggota
-              </button>
-            </p>
           </form>
         </section>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#f5f7fb] text-slate-700">
+          Memuat halaman login...
+        </main>
+      }
+    >
+      <LoginForm />
+    </Suspense>
   );
 }

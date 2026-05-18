@@ -98,10 +98,10 @@ export default function LaporanKeuanganPage() {
   if (!user) return <div>Loading...</div>;
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex min-h-screen bg-gray-100">
       <Sidebar user={user} onLogout={handleLogout} />
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto">
         <div className="bg-white shadow-sm p-6 border-b border-gray-200">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gray-900">Laporan Keuangan</h1>

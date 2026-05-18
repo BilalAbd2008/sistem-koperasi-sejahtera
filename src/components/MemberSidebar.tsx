@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { logout, getAllUsers, switchRole } from "@/lib/auth";
 
 interface MemberSidebarProps {
   user: {
@@ -60,12 +61,24 @@ export default function MemberSidebar({ user }: MemberSidebarProps) {
   const router = useRouter();
 
   const handleLogout = () => {
-    localStorage.removeItem("user");
+    logout("anggota");
     router.push("/");
   };
 
+  const handleSwitchRole = () => {
+    const users = getAllUsers();
+    const otherRole = users.find((u) => u.role !== "anggota")?.role;
+    if (otherRole && switchRole(otherRole)) {
+      const dashboardPath =
+        otherRole === "bendahara" ? "/dashboard/bendahara" : "/dashboard";
+      router.push(dashboardPath);
+    }
+  };
+
+  const hasOtherUsers = getAllUsers().length > 1;
+
   return (
-    <aside className="flex h-full w-72 flex-col bg-slate-950 text-white shadow-2xl shadow-slate-950/40">
+    <aside className="sticky top-0 flex h-screen w-72 shrink-0 flex-col bg-slate-950 text-white shadow-2xl shadow-slate-950/40">
       <div className="shrink-0 flex items-center gap-3 border-b border-white/10 px-5 py-4">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
@@ -119,9 +132,25 @@ export default function MemberSidebar({ user }: MemberSidebarProps) {
           </p>
           <p className="text-xs text-white/55">{user.role}</p>
         </div>
+        {hasOtherUsers && (
+          <button
+            onClick={handleSwitchRole}
+            className="mt-3 flex w-full items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium transition hover:bg-emerald-700"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <path d="M7 10l5-5 5 5M7 14l5 5 5-5" />
+            </svg>
+            Ganti Role
+          </button>
+        )}
         <button
           onClick={handleLogout}
-          className="mt-4 flex w-full items-center gap-2 rounded-xl bg-red-600 px-4 py-2 font-medium transition hover:bg-red-700"
+          className="mt-3 flex w-full items-center gap-2 rounded-xl bg-red-600 px-4 py-2 font-medium transition hover:bg-red-700"
         >
           <svg
             viewBox="0 0 24 24"

@@ -1,5 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { 
+  addBalancedJournal, 
+  loanJournal,
+  postJournalEntry,
+  createLoanJournalEntry 
+} from "@/lib/accounting";
+import { runLoanPaymentAutomation } from "@/lib/loanAutomation";
+import type { PoolConnection } from "mysql2/promise";
+
+let loanMigrationPromise: Promise<void> | null = null;
+
+async function ensureLoanScheduleColumns(connection: PoolConnection) {
+  if (!loanMigrationPromise) {
+    loanMigrationPromise = (async () => {
+      const [columns] = await connection.query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pinjaman' AND COLUMN_NAME IN ('tanggal_mulai', 'tanggal_tagih')",
+      );
+      const existing = new Set(
+        (columns as Array<{ COLUMN_NAME: string }>).map(
+          (column) => column.COLUMN_NAME,
+        ),
+      );
+
+      if (!existing.has("tanggal_mulai")) {
+        await connection.query(
+          "ALTER TABLE pinjaman ADD COLUMN tanggal_mulai DATE NULL AFTER tanggal_pinjam",
+        );
+        await connection.query(
+          "UPDATE pinjaman SET tanggal_mulai = tanggal_pinjam WHERE tanggal_mulai IS NULL",
+        );
+        await connection.query(
+          "ALTER TABLE pinjaman MODIFY tanggal_mulai DATE NOT NULL",
+        );
+      }
+
+      if (!existing.has("tanggal_tagih")) {
+        await connection.query(
+          "ALTER TABLE pinjaman ADD COLUMN tanggal_tagih TINYINT NOT NULL DEFAULT 1 AFTER tanggal_mulai",
+        );
+      }
+    })();
+  }
+
+  await loanMigrationPromise;
+}
+
+function calculateDueDate(startDate: string | Date, tenor: number) {
+  const dueDate = new Date(startDate);
+  dueDate.setMonth(dueDate.getMonth() + Number(tenor || 0));
+  return dueDate;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -7,23 +58,44 @@ export async function GET(request: NextRequest) {
     const id_anggota = searchParams.get("id_anggota");
 
     const connection = await pool.getConnection();
+    let pinjaman;
+    try {
+      await ensureLoanScheduleColumns(connection);
+      await connection.beginTransaction();
+      await runLoanPaymentAutomation(connection);
+      await connection.commit();
 
-    let query = `
-      SELECT p.*, a.nama, a.no_anggota 
-      FROM pinjaman p 
-      JOIN anggota a ON p.id_anggota = a.id
-    `;
-    let params: any[] = [];
+      let query = `
+        SELECT
+          p.*,
+          a.nama,
+          a.no_anggota,
+          COALESCE(payments.total_bayar_pokok, 0) AS total_bayar_pokok,
+          GREATEST(p.jumlah_pinjam - COALESCE(payments.total_bayar_pokok, 0), 0) AS sisa_pinjaman
+        FROM pinjaman p 
+        JOIN anggota a ON p.id_anggota = a.id
+        LEFT JOIN (
+          SELECT id_pinjaman, SUM(jumlah_bayar) AS total_bayar_pokok
+          FROM pembayaran_pinjaman
+          GROUP BY id_pinjaman
+        ) payments ON payments.id_pinjaman = p.id
+      `;
+      let params: any[] = [];
 
-    if (id_anggota) {
-      query += " WHERE p.id_anggota = ?";
-      params.push(id_anggota);
+      if (id_anggota) {
+        query += " WHERE p.id_anggota = ?";
+        params.push(id_anggota);
+      }
+
+      query += " ORDER BY p.tanggal_pinjam DESC";
+
+      [pinjaman] = await connection.query(query, params);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
-
-    query += " ORDER BY p.tanggal_pinjam DESC";
-
-    const [pinjaman] = await connection.query(query, params);
-    connection.release();
 
     return NextResponse.json({
       success: true,
@@ -40,24 +112,82 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { id_anggota, jumlah_pinjam, jumlah_bunga, jangka_waktu } =
-      await request.json();
+    const {
+      id_anggota,
+      jumlah_pinjam,
+      jumlah_bunga,
+      jangka_waktu,
+      tanggal_mulai,
+      tanggal_tagih,
+      idPengguna,
+    } = await request.json();
 
     const connection = await pool.getConnection();
+    await ensureLoanScheduleColumns(connection);
 
-    const jatuh_tempo = new Date();
-    jatuh_tempo.setMonth(jatuh_tempo.getMonth() + jangka_waktu);
+    const startDate = tanggal_mulai || new Date();
+    const jatuh_tempo = calculateDueDate(startDate, Number(jangka_waktu || 0));
+    const billingDay = Math.min(Math.max(Number(tanggal_tagih || 1), 1), 31);
 
-    await connection.query(
-      `INSERT INTO pinjaman (id_anggota, jumlah_pinjam, jumlah_bunga, jangka_waktu, tanggal_pinjam, tanggal_jatuh_tempo) 
-       VALUES (?, ?, ?, ?, NOW(), ?)`,
-      [id_anggota, jumlah_pinjam, jumlah_bunga, jangka_waktu, jatuh_tempo],
-    );
-    connection.release();
+    try {
+      await connection.beginTransaction();
+      
+      const [result] = await connection.query(
+        `INSERT INTO pinjaman (id_anggota, jumlah_pinjam, jumlah_bunga, jangka_waktu, tanggal_pinjam, tanggal_mulai, tanggal_tagih, tanggal_jatuh_tempo) 
+         VALUES (?, ?, ?, ?, NOW(), ?, ?, ?)`,
+        [
+          id_anggota,
+          jumlah_pinjam,
+          jumlah_bunga,
+          jangka_waktu,
+          startDate,
+          billingDay,
+          jatuh_tempo,
+        ],
+      );
+      const idPinjaman = (result as any).insertId;
+
+      // Legacy: Insert ke transaksi_lain untuk backward compatibility
+      await addBalancedJournal(
+        connection,
+        loanJournal(
+          Number(id_anggota),
+          Number(jumlah_pinjam),
+          Number(jumlah_bunga || 0),
+        ),
+      );
+
+      // Modern: Create journal entry ke jurnal_umum system
+      const now = new Date();
+      const periode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+      try {
+        const modernJournal = createLoanJournalEntry(
+          Number(id_anggota),
+          Number(jumlah_pinjam),
+          Number(jumlah_bunga || 0),
+          startDate,
+          periode,
+          idPengguna || 1,
+          idPinjaman,
+        );
+
+        await postJournalEntry(connection, modernJournal);
+      } catch (journalError) {
+        console.warn("Modern journal entry failed (non-blocking):", journalError);
+      }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return NextResponse.json({
       success: true,
-      message: "Pinjaman berhasil ditambahkan",
+      message: "Pinjaman berhasil ditambahkan (dicatat ke jurnal akuntansi)",
     });
   } catch (error) {
     console.error("Create pinjaman error:", error);
@@ -76,20 +206,26 @@ export async function PUT(request: NextRequest) {
       jumlah_pinjam,
       jumlah_bunga,
       jangka_waktu,
+      tanggal_mulai,
+      tanggal_tagih,
       status,
     } = await request.json();
 
     const connection = await pool.getConnection();
-    const jatuh_tempo = new Date();
-    jatuh_tempo.setMonth(jatuh_tempo.getMonth() + Number(jangka_waktu || 0));
+    await ensureLoanScheduleColumns(connection);
+    const startDate = tanggal_mulai || new Date();
+    const jatuh_tempo = calculateDueDate(startDate, Number(jangka_waktu || 0));
+    const billingDay = Math.min(Math.max(Number(tanggal_tagih || 1), 1), 31);
 
     await connection.query(
-      "UPDATE pinjaman SET id_anggota = ?, jumlah_pinjam = ?, jumlah_bunga = ?, jangka_waktu = ?, tanggal_jatuh_tempo = ?, status = ? WHERE id = ?",
+      "UPDATE pinjaman SET id_anggota = ?, jumlah_pinjam = ?, jumlah_bunga = ?, jangka_waktu = ?, tanggal_mulai = ?, tanggal_tagih = ?, tanggal_jatuh_tempo = ?, status = ? WHERE id = ?",
       [
         id_anggota,
         jumlah_pinjam,
         jumlah_bunga,
         jangka_waktu,
+        startDate,
+        billingDay,
         jatuh_tempo,
         status,
         id,

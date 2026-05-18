@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import BendaharaSidebar from "@/components/BendaharaSidebar";
 
 interface UserData {
@@ -25,10 +26,11 @@ interface RecentLoan {
 }
 
 const shortcuts = [
-  { label: "Data Anggota", href: "/dashboard/bendahara/anggota" },
+  { label: "Data Nasabah", href: "/dashboard/bendahara/anggota" },
   { label: "Simpanan", href: "/dashboard/bendahara/simpanan" },
   { label: "Pinjaman", href: "/dashboard/bendahara/pinjaman" },
   { label: "Angsuran", href: "/dashboard/bendahara/angsuran" },
+  { label: "Laporan Keuangan", href: "/dashboard/bendahara/laporan" },
 ];
 
 export default function BendaharaDashboardPage() {
@@ -44,19 +46,18 @@ export default function BendaharaDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) {
+    const user = getCurrentUser();
+    if (!user) {
       router.push("/");
       return;
     }
 
-    const parsedUser = JSON.parse(userData) as UserData;
-    if (parsedUser.role !== "bendahara") {
+    if (user.role !== "bendahara" && user.role !== "admin") {
       router.push("/dashboard");
       return;
     }
 
-    setUser(parsedUser);
+    setUser(user);
 
     const loadDashboard = async () => {
       try {
@@ -95,12 +96,12 @@ export default function BendaharaDashboardPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-100">
-      <div className="flex h-full">
+    <div className="min-h-screen overflow-y-auto bg-slate-100">
+      <div className="flex min-h-screen">
         <BendaharaSidebar user={user} />
 
-        <main className="flex-1 overflow-hidden bg-slate-50">
-          <div className="flex h-full flex-col">
+        <main className="min-w-0 flex-1 overflow-y-auto bg-slate-50">
+          <div className="flex min-h-full flex-col">
             <header className="flex items-center justify-between border-b border-slate-200 bg-white px-8 py-5">
               <div>
                 <p className="text-sm font-semibold text-slate-500">
@@ -124,7 +125,7 @@ export default function BendaharaDashboardPage() {
               </div>
             </header>
 
-            <section className="flex-1 overflow-hidden px-8 py-6">
+            <section className="flex-1 px-8 py-6">
               <div className="mb-4 flex items-center justify-between">
                 <p className="text-sm text-slate-500">
                   Gunakan tombol di bawah untuk memasang data simulasi ke
@@ -144,7 +145,7 @@ export default function BendaharaDashboardPage() {
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {[
                   {
-                    title: "Total Anggota",
+                    title: "Total Nasabah Simpan Pinjam",
                     value: stats.totalMembers,
                     tone: "from-emerald-50 to-emerald-100 text-emerald-700",
                   },

@@ -1,3 +1,22 @@
+# REPA Quickstart
+
+This workspace follows the architecture documented in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Runtime Overview
+- Login at `/` routes users by role after storing the session payload in `localStorage`.
+- Member dashboards live under `src/app/dashboard/anggota`.
+- Bendahara dashboards live under `src/app/dashboard/bendahara`.
+- API routes live under `src/app/api` and talk to MySQL via the shared pool in `src/lib/db.ts`.
+
+## Scroll Behavior
+- Dashboard pages should use `min-h-screen` plus `overflow-y-auto` on the main wrapper.
+- Avoid `h-screen overflow-hidden` unless the page intentionally uses an internal scroll region.
+
+## Interactive Workflows
+- Use the forms and API routes for create/edit/delete actions.
+- Use `/register`, `/lupa-password`, and `/reset-password` for account onboarding and recovery.
+- Use the laporan export buttons for PDF/XLSX generation.
+
 # ⚡ QUICK START - Setup & Jalankan dalam 5 Menit
 
 ## 🎯 Prerequisites

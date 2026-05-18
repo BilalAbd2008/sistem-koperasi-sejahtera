@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
 import MemberSidebar from "@/components/MemberSidebar";
 
 interface UserData {
@@ -31,26 +32,24 @@ export default function AnggotaSimpananPage() {
   const pageSize = 5;
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) {
+    const user = getCurrentUser();
+    if (!user) {
       router.push("/");
       return;
     }
 
-    const parsedUser = JSON.parse(userData) as UserData;
-    if (parsedUser.role !== "anggota") {
+    if (user.role !== "anggota") {
       router.push("/dashboard");
       return;
     }
 
-    setUser(parsedUser);
+    setUser(user);
 
     const loadData = async () => {
       try {
-        const userData = localStorage.getItem("user");
-        if (!userData) return;
-        const user = JSON.parse(userData);
-        const anggota_id = user.anggota_id;
+        const currentUser = getCurrentUser();
+        if (!currentUser) return;
+        const anggota_id = currentUser.anggota_id;
 
         const response = await fetch(`/api/simpanan?id_anggota=${anggota_id}`);
         const data = await response.json();
@@ -108,10 +107,10 @@ export default function AnggotaSimpananPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-slate-100">
+    <div className="min-h-screen overflow-y-auto bg-slate-100">
       <div className="flex h-full">
         <MemberSidebar user={user} />
-        <main className="flex-1 overflow-hidden bg-slate-50 px-8 py-6">
+        <main className="flex-1 overflow-y-auto bg-slate-50 px-8 py-6">
           <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-slate-500">
               Simpanan (Anggota)

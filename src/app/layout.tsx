@@ -29,7 +29,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body suppressHydrationWarning className="min-h-full flex flex-col">
+      <body suppressHydrationWarning className="min-h-screen flex flex-col overflow-x-hidden">
         <Script id="strip-extension-attrs" strategy="beforeInteractive">
           {`(() => {
             const attrPattern = /^(bis_|fdprocessedid$|__processed_|data-new-gr-c-s-check-loaded$|data-gr-ext-installed$)/;

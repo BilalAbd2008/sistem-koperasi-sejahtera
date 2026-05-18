@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getCurrentUser } from "@/lib/auth";
+import { exportToExcel } from "@/lib/export";
 import BendaharaSidebar from "@/components/BendaharaSidebar";
 
 interface UserData {
@@ -9,10 +11,16 @@ interface UserData {
   username: string;
   role: string;
 }
+
 interface AngsuranItem {
   id: number;
   id_pinjaman: number;
   id_anggota: number;
+  nama: string;
+  no_anggota: string;
+  jumlah_pinjam: number;
+  sisa_pinjaman: number;
+  tanggal_tagih: number;
   jumlah_bayar: number;
   tanggal_bayar: string;
   keterangan: string | null;
@@ -23,25 +31,36 @@ interface AnggotaItem {
   nama: string;
 }
 
+const periodOptions = [
+  { value: "semua", label: "Semua periode" },
+  { value: "bulan-ini", label: "Bulan ini" },
+  { value: "bulan-lalu", label: "Bulan lalu" },
+  { value: "tahun-ini", label: "Tahun ini" },
+];
+
+const formatMoney = (value: number) => `Rp ${Number(value || 0).toLocaleString("id-ID")}`;
+
+const makeLocalDate = (value: string) => {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day);
+};
+
 export default function BendaharaAngsuranPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserData | null>(null);
   const [angsuran, setAngsuran] = useState<AngsuranItem[]>([]);
   const [anggotaMap, setAnggotaMap] = useState<Record<number, string>>({});
+  const [search, setSearch] = useState("");
+  const [nasabahFilter, setNasabahFilter] = useState("semua");
+  const [periodFilter, setPeriodFilter] = useState("semua");
   const [loading, setLoading] = useState(true);
-  const [showInputModal, setShowInputModal] = useState(false);
-  const [formData, setFormData] = useState({
-    id_pinjaman: "",
-    jumlah_bayar: "",
-    keterangan: "Input manual bendahara",
-  });
 
   useEffect(() => {
-    const userData = localStorage.getItem("user");
-    if (!userData) return void router.push("/");
-    const parsedUser = JSON.parse(userData) as UserData;
-    if (parsedUser.role !== "bendahara") return void router.push("/dashboard");
-    setUser(parsedUser);
+    const currentUser = getCurrentUser();
+    if (!currentUser) return void router.push("/");
+    if (currentUser.role !== "bendahara") return void router.push("/dashboard");
+    setUser(currentUser);
+
     Promise.all([fetch("/api/pembayaran-pinjaman"), fetch("/api/anggota")])
       .then(async ([angsuranRes, anggotaRes]) => {
         const angsuranData = await angsuranRes.json();
@@ -63,36 +82,128 @@ export default function BendaharaAngsuranPage() {
       .finally(() => setLoading(false));
   }, [router]);
 
-  const handleInputPembayaran = async () => {
-    setFormData({
-      id_pinjaman: "",
-      jumlah_bayar: "",
-      keterangan: "Input manual bendahara",
+  const nasabahOptions = useMemo(() => {
+    const map = new Map<number, string>();
+    angsuran.forEach((item) => {
+      map.set(item.id_anggota, item.nama || anggotaMap[item.id_anggota] || `Nasabah ${item.id_anggota}`);
     });
-    setShowInputModal(true);
+    return Array.from(map, ([id, nama]) => ({ id, nama }));
+  }, [anggotaMap, angsuran]);
+
+  const filteredRows = useMemo(() => {
+    const now = new Date();
+
+    return angsuran.filter((item) => {
+      const paymentDate = makeLocalDate(item.tanggal_bayar);
+      const name = item.nama || anggotaMap[item.id_anggota] || "";
+      const matchesSearch =
+        name.toLowerCase().includes(search.toLowerCase()) ||
+        `P-${item.id_pinjaman}`.toLowerCase().includes(search.toLowerCase());
+      const matchesNasabah =
+        nasabahFilter === "semua" || String(item.id_anggota) === nasabahFilter;
+
+      let matchesPeriod = true;
+      if (periodFilter === "bulan-ini") {
+        matchesPeriod =
+          paymentDate.getMonth() === now.getMonth() &&
+          paymentDate.getFullYear() === now.getFullYear();
+      } else if (periodFilter === "bulan-lalu") {
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        matchesPeriod =
+          paymentDate.getMonth() === lastMonth.getMonth() &&
+          paymentDate.getFullYear() === lastMonth.getFullYear();
+      } else if (periodFilter === "tahun-ini") {
+        matchesPeriod = paymentDate.getFullYear() === now.getFullYear();
+      }
+
+      return matchesSearch && matchesNasabah && matchesPeriod;
+    });
+  }, [anggotaMap, angsuran, nasabahFilter, periodFilter, search]);
+
+  const buildExportRows = () =>
+    filteredRows.map((item) => ({
+      Tanggal: new Date(item.tanggal_bayar).toLocaleDateString("id-ID"),
+      Nasabah: item.nama || anggotaMap[item.id_anggota] || "-",
+      "No Anggota": item.no_anggota || "-",
+      Pinjaman: `P-${item.id_pinjaman}`,
+      "Bayar Pokok": Number(item.jumlah_bayar || 0),
+      "Sisa Pokok": Number(item.sisa_pinjaman || 0),
+      "Tanggal Tagih": item.tanggal_tagih || "-",
+      Keterangan: item.keterangan || "Angsuran pinjaman",
+    }));
+
+  const handleExportExcel = () => {
+    exportToExcel(buildExportRows(), "Angsuran", "laporan-angsuran.xlsx");
   };
 
-  const handleSubmitPembayaran = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.id_pinjaman || !formData.jumlah_bayar) return;
+  const handleExportPDF = async () => {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "landscape" });
+    const rows = buildExportRows();
 
-    const response = await fetch("/api/pembayaran-pinjaman", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id_pinjaman: Number(formData.id_pinjaman),
-        jumlah_bayar: Number(formData.jumlah_bayar),
-        keterangan: formData.keterangan,
-      }),
+    doc.setFillColor(15, 118, 110);
+    doc.rect(0, 0, 297, 28, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.text("Laporan Angsuran Pinjaman", 14, 17);
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFontSize(9);
+    doc.text(
+      `Filter nasabah: ${nasabahFilter === "semua" ? "Semua" : nasabahOptions.find((item) => String(item.id) === nasabahFilter)?.nama || "-"}`,
+      14,
+      38,
+    );
+    doc.text(`Periode: ${periodOptions.find((item) => item.value === periodFilter)?.label || "Semua"}`, 14, 44);
+    doc.text(`Total pembayaran pokok: ${formatMoney(totalPembayaran)}`, 14, 50);
+
+    const headers = ["Tanggal", "Nasabah", "No Anggota", "Pinjaman", "Bayar Pokok", "Sisa Pokok", "Tagih", "Keterangan"];
+    const widths = [25, 42, 32, 22, 35, 35, 18, 58];
+    let y = 62;
+
+    doc.setFillColor(241, 245, 249);
+    doc.rect(14, y - 7, 269, 10, "F");
+    doc.setFontSize(8);
+    let x = 16;
+    headers.forEach((header, index) => {
+      doc.text(header, x, y);
+      x += widths[index];
     });
 
-    if (response.ok) {
-      const reload = await fetch("/api/pembayaran-pinjaman");
-      const data = await reload.json();
-      if (data.success) setAngsuran(data.data);
-      setShowInputModal(false);
-    }
+    y += 9;
+    rows.forEach((row) => {
+      if (y > 190) {
+        doc.addPage();
+        y = 18;
+      }
+      x = 16;
+      [
+        row.Tanggal,
+        row.Nasabah,
+        row["No Anggota"],
+        row.Pinjaman,
+        formatMoney(row["Bayar Pokok"]),
+        formatMoney(row["Sisa Pokok"]),
+        String(row["Tanggal Tagih"]),
+        row.Keterangan,
+      ].forEach((value, index) => {
+        doc.text(String(value).slice(0, 32), x, y);
+        x += widths[index];
+      });
+      y += 8;
+    });
+
+    doc.save("laporan-angsuran.pdf");
   };
+
+  const totalPembayaran = filteredRows.reduce(
+    (sum, item) => sum + Number(item.jumlah_bayar || 0),
+    0,
+  );
+  const totalSisaPokok = filteredRows.reduce(
+    (sum, item) => sum + Number(item.sisa_pinjaman || 0),
+    0,
+  );
 
   if (!user)
     return (
@@ -100,64 +211,121 @@ export default function BendaharaAngsuranPage() {
         Memuat data angsuran...
       </div>
     );
+
   return (
-    <div className="h-screen overflow-hidden bg-slate-100">
+    <div className="min-h-screen overflow-y-auto bg-slate-100">
       <div className="flex h-full">
         <BendaharaSidebar user={user} />
-        <main className="flex-1 overflow-hidden bg-slate-50 px-8 py-6">
-          <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex items-center justify-between gap-4">
+        <main className="flex-1 overflow-y-auto bg-slate-50 px-8 py-6">
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-slate-500">
-                  Angsuran Bendahara
+                <p className="text-sm font-semibold text-slate-500">Angsuran Bendahara</p>
+                <h1 className="text-2xl font-bold text-slate-900">Riwayat Angsuran</h1>
+                <p className="mt-1 text-sm text-slate-500">
+                  Halaman ini menampilkan pembayaran pokok yang sudah masuk.
                 </p>
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Data Angsuran
-                </h1>
               </div>
-              <button
-                type="button"
-                onClick={handleInputPembayaran}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportPDF}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Export PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Export Excel
+                </button>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cari nasabah atau ID pinjaman..."
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-900"
+              />
+              <select
+                value={nasabahFilter}
+                onChange={(event) => setNasabahFilter(event.target.value)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-900"
               >
-                + Input Pembayaran
-              </button>
+                <option value="semua">Semua nasabah</option>
+                {nasabahOptions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.nama}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={periodFilter}
+                onChange={(event) => setPeriodFilter(event.target.value)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-900"
+              >
+                {periodOptions.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-          <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+
+          <div className="mb-6 grid gap-4 md:grid-cols-3">
+            {[
+              ["Transaksi", filteredRows.length.toLocaleString("id-ID")],
+              ["Total Bayar Pokok", formatMoney(totalPembayaran)],
+              ["Total Sisa Pokok", formatMoney(totalSisaPokok)],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <p className="text-sm font-semibold text-slate-500">{label}</p>
+                <p className="mt-2 text-xl font-bold text-slate-900">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-6 py-4">
+              <h2 className="text-lg font-bold text-slate-900">Riwayat Pembayaran Pokok</h2>
+              <p className="text-sm text-slate-500">
+                Pembayaran di sini mengurangi sisa pokok. Bunga tidak ikut mengurangi sisa pokok.
+              </p>
+            </div>
             <div className="overflow-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50 text-sm text-slate-500">
                   <tr>
                     <th className="px-6 py-4">Tanggal</th>
-                    <th className="px-6 py-4">Nama Anggota</th>
+                    <th className="px-6 py-4">Nama Nasabah</th>
                     <th className="px-6 py-4">Pinjaman</th>
-                    <th className="px-6 py-4">Nominal</th>
+                    <th className="px-6 py-4">Bayar Pokok</th>
+                    <th className="px-6 py-4">Sisa Pokok</th>
                     <th className="px-6 py-4">Keterangan</th>
-                    <th className="px-6 py-4">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(loading ? [] : angsuran.slice(0, 12)).map((item) => (
+                  {(loading ? [] : filteredRows.slice(0, 20)).map((item) => (
                     <tr key={item.id} className="border-t border-slate-100">
-                      <td className="px-6 py-4 text-slate-700">
-                        {new Date(item.tanggal_bayar).toLocaleDateString(
-                          "id-ID",
-                        )}
+                      <td className="whitespace-nowrap px-6 py-4 text-slate-700">
+                        {new Date(item.tanggal_bayar).toLocaleDateString("id-ID")}
                       </td>
                       <td className="px-6 py-4 text-slate-700">
-                        {anggotaMap[item.id_anggota] || "-"}
+                        {item.nama || anggotaMap[item.id_anggota] || "-"}
                       </td>
-                      <td className="px-6 py-4 text-slate-700">
-                        P-{item.id_pinjaman}
+                      <td className="whitespace-nowrap px-6 py-4 text-slate-700">P-{item.id_pinjaman}</td>
+                      <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">
+                        {formatMoney(item.jumlah_bayar)}
                       </td>
-                      <td className="px-6 py-4 font-semibold text-slate-900">
-                        Rp {Number(item.jumlah_bayar).toLocaleString("id-ID")}
+                      <td className="whitespace-nowrap px-6 py-4 font-semibold text-emerald-700">
+                        {formatMoney(Number(item.sisa_pinjaman ?? 0))}
                       </td>
-                      <td className="px-6 py-4 text-slate-700">
-                        {item.keterangan || "Angsuran pinjaman"}
-                      </td>
-                      <td className="px-6 py-4 text-slate-700">•</td>
+                      <td className="px-6 py-4 text-slate-700">{item.keterangan || "Angsuran pinjaman"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -166,54 +334,6 @@ export default function BendaharaAngsuranPage() {
           </div>
         </main>
       </div>
-
-      {showInputModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-96 rounded-2xl bg-white p-6 shadow-2xl">
-            <h2 className="mb-4 text-xl font-bold text-slate-900">Input Pembayaran Angsuran</h2>
-            <form onSubmit={handleSubmitPembayaran} className="space-y-4">
-              <input
-                type="number"
-                placeholder="ID Pinjaman"
-                value={formData.id_pinjaman}
-                onChange={(e) => setFormData({ ...formData, id_pinjaman: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2"
-                required
-              />
-              <input
-                type="number"
-                placeholder="Nominal Pembayaran"
-                value={formData.jumlah_bayar}
-                onChange={(e) => setFormData({ ...formData, jumlah_bayar: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2"
-                required
-              />
-              <textarea
-                placeholder="Keterangan"
-                value={formData.keterangan}
-                onChange={(e) => setFormData({ ...formData, keterangan: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2"
-                rows={3}
-              />
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowInputModal(false)}
-                  className="flex-1 rounded-lg border border-slate-200 px-4 py-2"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700"
-                >
-                  Simpan
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
