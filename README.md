@@ -2,30 +2,99 @@
 
 Aplikasi web modern untuk mengelola sistem simpanan dan pinjam anggota koperasi. Dibangun dengan **Next.js 16**, **React 19**, **TypeScript**, **Tailwind CSS**, dan **MySQL**.
 
-## 🚀 Quick Start
 
-### 1. Persiapan Database Laragon
+## Setup di Laptop Baru
 
-```bash
-# Buka phpMyAdmin: http://localhost/phpmyadmin
-# Pastikan MySQL/Laragon berjalan
-# Database repa_koperasi dan schema akan dibuat otomatis saat API pertama kali diakses
-# Jika ingin setup manual, lihat bagian Setup Database
+Ikuti langkah ini setelah project berhasil di-clone dari GitHub.
+
+### 1. Install aplikasi yang dibutuhkan
+
+- Install Node.js versi 20.9 atau lebih baru.
+- Install Laragon.
+- Pastikan project berada di folder lokal, contoh: `D:\repa-app`.
+
+### 2. Jalankan Laragon
+
+1. Buka Laragon.
+2. Klik `Start All`.
+3. Pastikan MySQL berjalan.
+4. Untuk cek phpMyAdmin, buka `http://localhost/phpmyadmin`.
+
+Default Laragon biasanya memakai:
+
+```env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=repa_koperasi
 ```
 
-### 2. Install & Jalankan
+### 3. Install dependency project
+
+Buka terminal di folder project:
 
 ```bash
-cd d:\repa-app
+cd D:\repa-app
 npm install
-npm run dev
-
-# Buka browser: http://localhost:3000
 ```
 
-### 3. Login
+### 4. Siapkan file environment
 
-- Username: `admin` | Password: `admin123`
+Pastikan file `.env.local` ada di root project dan berisi:
+
+```env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=repa_koperasi
+NEXT_PUBLIC_API_URL=http://localhost:3000/api
+```
+
+### 5. Setup database
+
+Aplikasi akan mencoba membuat database `repa_koperasi` dan import schema otomatis saat API pertama kali diakses.
+
+Jika ingin setup manual lewat terminal:
+
+```bash
+mysql -u root -e "CREATE DATABASE IF NOT EXISTS repa_koperasi;"
+mysql -u root repa_koperasi < database_schema.sql
+mysql -u root repa_koperasi < database_schema_accounting_extension.sql
+```
+
+Jika ingin setup manual lewat phpMyAdmin:
+
+1. Buka `http://localhost/phpmyadmin`.
+2. Buat database baru bernama `repa_koperasi`.
+3. Pilih database `repa_koperasi`.
+4. Masuk tab `Import`.
+5. Import file `database_schema.sql`.
+6. Import file `database_schema_accounting_extension.sql`.
+
+### 6. Jalankan aplikasi
+
+```bash
+npm run dev
+```
+
+Buka browser:
+
+```text
+http://localhost:3000
+```
+
+### 7. Login
+
+Gunakan akun bendahara:
+
+```text
+Username: bendahara
+Password: bend123
+```
+
+Catatan: endpoint login saat ini hanya menerima role `bendahara`, jadi akun `admin/admin123` belum bisa dipakai dari halaman login utama.
 
 ---
 
@@ -154,7 +223,7 @@ Sebagai anggota, saya ingin mengubah data pribadi agar informasi saya tetap akur
 
 ## 📦 Prasyarat
 
-- Node.js 18+
+- Node.js 20.9 atau lebih baru
 - Laragon (download: https://laragon.org/)
 
 ---
@@ -174,6 +243,7 @@ Catatan: langkah ini sekarang opsional. Aplikasi akan mencoba membuat database d
 
 ```bash
 mysql -u root repa_koperasi < database_schema.sql
+mysql -u root repa_koperasi < database_schema_accounting_extension.sql
 ```
 
 ### Step 3: Insert User Default
@@ -306,11 +376,11 @@ npm run lint
 
 ## 🔐 Login Credentials
 
-| Role      | Username  | Password    |
-| --------- | --------- | ----------- |
-| Admin     | admin     | admin123    |
-| Bendahara | bendahara | bend123     |
-| Pengurus  | pengurus  | pengurus123 |
+| Role      | Username  | Password    | Catatan |
+| --------- | --------- | ----------- | ------- |
+| Bendahara | bendahara | bend123     | Bisa login di halaman `/` |
+| Admin     | admin     | admin123    | Belum diterima endpoint login utama saat ini |
+| Pengurus  | pengurus  | pengurus123 | Belum diterima endpoint login utama saat ini |
 
 ---
 
