@@ -1,8 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { RowDataPacket } from "mysql2";
 import pool from "@/lib/db";
 import { getIncomeStatementData } from "@/lib/accounting";
 
 export const dynamic = "force-dynamic";
+
+type IncomeStatementResult = {
+  system: string;
+  old: unknown | null;
+  new: unknown | null;
+};
+
+type LegacyIncomeRow = RowDataPacket & {
+  akun: string;
+  debit: number | string | null;
+  kredit: number | string | null;
+};
+
+type ModernIncomeRow = RowDataPacket & {
+  kodeRekening: string;
+  namaRekening: string;
+  kategori: "pendapatan" | "beban";
+  tipeNormal: "debit" | "kredit";
+  totalDebit: number | string | null;
+  totalKredit: number | string | null;
+};
 
 /**
  * GET /api/laporan-keuangan/laba-rugi
@@ -31,7 +53,7 @@ export async function GET(request: NextRequest) {
     const connection = await pool.getConnection();
 
     try {
-      let result: any = {
+      const result: IncomeStatementResult = {
         system,
         old: null,
         new: null,
@@ -55,7 +77,7 @@ export async function GET(request: NextRequest) {
           ? `WHERE ${conditions.join(" AND ")}`
           : "";
 
-        const [rows] = await connection.query(
+        const [rows] = await connection.query<LegacyIncomeRow[]>(
           `SELECT
             jenis_transaksi AS akun,
             SUM(CASE WHEN tipe = 'debit' THEN jumlah ELSE 0 END) AS debit,
@@ -68,7 +90,7 @@ export async function GET(request: NextRequest) {
         );
 
         // Map old system data to income statement
-        const oldData = (rows as any[]).map((row) => ({
+        const oldData = rows.map((row) => ({
           akun: row.akun,
           debit: Number(row.debit || 0),
           kredit: Number(row.kredit || 0),
@@ -120,26 +142,77 @@ export async function GET(request: NextRequest) {
 
       // Fetch from new system (jurnal_umum + rekening)
       if (system === "new" || system === "all") {
-        if (!periode) {
+        if (periode) {
+          const isData = await getIncomeStatementData(connection, periode);
+
+          result.new = {
+            revenues: isData.revenues,
+            expenses: isData.expenses,
+            totalRevenues: isData.totalRevenues,
+            totalExpenses: isData.totalExpenses,
+            netIncome: isData.netIncome,
+            periode,
+          };
+        } else if (periode_awal && periode_akhir) {
+          const [rows] = await connection.query<ModernIncomeRow[]>(
+            `SELECT
+              r.kode_rekening AS kodeRekening,
+              r.nama_rekening AS namaRekening,
+              r.kategori,
+              r.tipe_normal AS tipeNormal,
+              COALESCE(SUM(CASE WHEN ju.id IS NOT NULL AND jd.posisi = 'debit' THEN jd.jumlah ELSE 0 END), 0) AS totalDebit,
+              COALESCE(SUM(CASE WHEN ju.id IS NOT NULL AND jd.posisi = 'kredit' THEN jd.jumlah ELSE 0 END), 0) AS totalKredit
+            FROM rekening r
+            LEFT JOIN jurnal_detail jd ON jd.kode_rekening = r.kode_rekening
+            LEFT JOIN jurnal_umum ju
+              ON ju.id = jd.id_jurnal
+              AND ju.status_posting = 'posted'
+              AND DATE(ju.tanggal_jurnal) BETWEEN ? AND ?
+            WHERE r.status = 'aktif'
+              AND r.kategori IN ('pendapatan', 'beban')
+            GROUP BY r.kode_rekening, r.nama_rekening, r.kategori, r.tipe_normal
+            ORDER BY r.kode_rekening`,
+            [periode_awal, periode_akhir],
+          );
+
+          const mappedRows = rows.map((row) => {
+            const totalDebit = Number(row.totalDebit || 0);
+            const totalKredit = Number(row.totalKredit || 0);
+            const amount =
+              row.tipeNormal === "kredit"
+                ? totalKredit - totalDebit
+                : totalDebit - totalKredit;
+
+            return {
+              kodeRekening: row.kodeRekening,
+              namaRekening: row.namaRekening,
+              kategori: row.kategori,
+              amount: Math.max(amount, 0),
+            };
+          });
+
+          const revenues = mappedRows.filter((row) => row.kategori === "pendapatan");
+          const expenses = mappedRows.filter((row) => row.kategori === "beban");
+          const totalRevenues = revenues.reduce((sum, row) => sum + row.amount, 0);
+          const totalExpenses = expenses.reduce((sum, row) => sum + row.amount, 0);
+
+          result.new = {
+            revenues,
+            expenses,
+            totalRevenues,
+            totalExpenses,
+            netIncome: totalRevenues - totalExpenses,
+            periode: `${periode_awal} s/d ${periode_akhir}`,
+          };
+        } else {
           return NextResponse.json(
             {
               success: false,
-              error: "Parameter 'periode' (YYYY-MM) diperlukan untuk sistem baru",
+              error: "Parameter periode atau rentang tanggal diperlukan untuk sistem baru",
             },
             { status: 400 },
           );
         }
-
-        const isData = await getIncomeStatementData(connection, periode);
-
-        result.new = {
-          revenues: isData.revenues,
-          expenses: isData.expenses,
-          totalRevenues: isData.totalRevenues,
-          totalExpenses: isData.totalExpenses,
-          netIncome: isData.netIncome,
-          periode,
-        };
       }
 
       return NextResponse.json({

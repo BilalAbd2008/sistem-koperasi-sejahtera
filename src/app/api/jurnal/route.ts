@@ -1,13 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { RowDataPacket } from "mysql2";
 import pool from "@/lib/db";
-import {
-  postJournalEntry,
-  createSavingJournalEntry,
-  createLoanJournalEntry,
-  createInstallmentJournalEntry,
-} from "@/lib/accounting";
+import { postJournalEntry } from "@/lib/accounting";
 
 export const dynamic = "force-dynamic";
+
+type JournalHeaderRow = RowDataPacket & {
+  id: number;
+};
+
+type JournalDetailRow = RowDataPacket & {
+  kode_rekening: string;
+  posisi: "debit" | "kredit";
+  jumlah: number | string;
+  keterangan: string | null;
+  id_anggota: number | null;
+  nama_rekening: string | null;
+};
 
 /**
  * GET /api/jurnal
@@ -32,7 +41,7 @@ export async function GET(request: NextRequest) {
     const connection = await pool.getConnection();
 
     try {
-      let allData: any[] = [];
+      let allData: unknown[] = [];
 
       // Fetch from old system (transaksi_lain)
       if (system === "old" || system === "all") {
@@ -56,7 +65,7 @@ export async function GET(request: NextRequest) {
         oldParams.push(limit, offset);
 
         const [oldRows] = await connection.query(oldQuery, oldParams);
-        allData = [...(oldRows as any[])];
+        allData = [...(oldRows as unknown[])];
       }
 
       // Fetch from new system (jurnal_umum)
@@ -68,7 +77,7 @@ export async function GET(request: NextRequest) {
           FROM jurnal_umum ju
           WHERE 1=1
         `;
-        const newParams: any[] = [];
+        const newParams: unknown[] = [];
 
         if (periode) {
           newQuery += " AND ju.periode = ?";
@@ -86,12 +95,15 @@ export async function GET(request: NextRequest) {
         newQuery += " ORDER BY ju.tanggal_jurnal DESC LIMIT ? OFFSET ?";
         newParams.push(limit, offset);
 
-        const [newRows] = await connection.query(newQuery, newParams);
+        const [newRows] = await connection.query<JournalHeaderRow[]>(
+          newQuery,
+          newParams,
+        );
 
         // Enrich dengan details
         const enrichedRows = await Promise.all(
-          (newRows as any[]).map(async (ju) => {
-            const [details] = await connection.query(
+          newRows.map(async (ju) => {
+            const [details] = await connection.query<JournalDetailRow[]>(
               `SELECT 
                 jd.kode_rekening,
                 jd.posisi,

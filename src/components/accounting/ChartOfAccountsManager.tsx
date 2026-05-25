@@ -10,6 +10,8 @@ interface Rekening {
   deskripsi?: string;
   kategori: 'aset' | 'liabilitas' | 'modal' | 'pendapatan' | 'beban';
   tipe_normal: 'debit' | 'kredit';
+  jenis_akun: 'parent' | 'child';
+  parent_kode_rekening?: string | null;
   status: 'aktif' | 'nonaktif';
 }
 
@@ -36,6 +38,8 @@ export default function ChartOfAccountsManager() {
     deskripsi: '',
     kategori: 'aset',
     tipe_normal: 'debit',
+    jenis_akun: 'child',
+    parent_kode_rekening: '',
     status: 'aktif',
   });
 
@@ -67,6 +71,8 @@ export default function ChartOfAccountsManager() {
       deskripsi: '',
       kategori: 'aset',
       tipe_normal: 'debit',
+      jenis_akun: 'child',
+      parent_kode_rekening: '',
       status: 'aktif',
     });
     setEditingId(null);
@@ -74,7 +80,11 @@ export default function ChartOfAccountsManager() {
   };
 
   const handleEdit = (item: Rekening) => {
-    setFormData(item);
+    setFormData({
+      ...item,
+      jenis_akun: item.jenis_akun || 'child',
+      parent_kode_rekening: item.parent_kode_rekening || '',
+    });
     setEditingId(item.kode_rekening);
     setShowForm(true);
   };
@@ -82,6 +92,11 @@ export default function ChartOfAccountsManager() {
   const handleSave = async () => {
     try {
       const method = editingId ? 'PUT' : 'POST';
+      if (formData.jenis_akun === 'child' && !formData.parent_kode_rekening) {
+        alert('Pilih parent untuk akun child');
+        return;
+      }
+
       const res = await fetch('/api/rekening', {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -90,7 +105,8 @@ export default function ChartOfAccountsManager() {
 
       if (res.ok) {
         setShowForm(false);
-        fetchRekening();
+        await fetchRekening();
+        window.localStorage.setItem('accounting-accounts-refresh', String(Date.now()));
       } else {
         alert('Error saving rekening');
       }
@@ -99,6 +115,29 @@ export default function ChartOfAccountsManager() {
       alert('Error: ' + String(error));
     }
   };
+
+  const parentAccounts = rekening.filter(
+    (item) =>
+      item.jenis_akun === 'parent' &&
+      item.kode_rekening !== formData.kode_rekening &&
+      item.status === 'aktif',
+  );
+
+  const handleParentChange = (kodeParent: string) => {
+    const parent = rekening.find((item) => item.kode_rekening === kodeParent);
+    setFormData((current) => ({
+      ...current,
+      parent_kode_rekening: kodeParent,
+      kategori: parent?.kategori || current.kategori,
+      tipe_normal: parent?.tipe_normal || current.tipe_normal,
+    }));
+  };
+
+  const isChildAccount = (item: Rekening) =>
+    item.jenis_akun === 'child' || (!!item.parent_kode_rekening && item.jenis_akun !== 'parent');
+
+  const accountOptionLabel = (item: Rekening) =>
+    `${isChildAccount(item) ? '\u00A0\u00A0\u00A0\u00A0' : ''}${item.kode_rekening} ${item.nama_rekening}`;
 
   const handleDelete = async (kode: string) => {
     if (!confirm('Yakin ingin menghapus?')) return;
@@ -160,12 +199,49 @@ export default function ChartOfAccountsManager() {
       {/* Form Modal */}
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-96 rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="text-xl font-bold mb-4">
               {editingId ? 'Edit Akun' : 'Tambah Akun Baru'}
             </h2>
 
             <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold mb-1">Jenis Akun</label>
+                <select
+                  value={formData.jenis_akun}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      jenis_akun: e.target.value as Rekening['jenis_akun'],
+                      parent_kode_rekening:
+                        e.target.value === 'parent' ? '' : formData.parent_kode_rekening,
+                    })
+                  }
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                >
+                  <option value="parent">Parent</option>
+                  <option value="child">Child</option>
+                </select>
+              </div>
+
+              {formData.jenis_akun === 'child' ? (
+                <div>
+                  <label className="block text-sm font-semibold mb-1">Parent Akun</label>
+                  <select
+                    value={formData.parent_kode_rekening || ''}
+                    onChange={(e) => handleParentChange(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                  >
+                    <option value="">Pilih parent</option>
+                    {parentAccounts.map((item) => (
+                      <option key={item.kode_rekening} value={item.kode_rekening}>
+                        {accountOptionLabel(item)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
               <div>
                 <label className="block text-sm font-semibold mb-1">Kode Akun</label>
                 <input
@@ -273,6 +349,8 @@ export default function ChartOfAccountsManager() {
             <tr className="bg-slate-50 text-sm text-slate-500">
               <th className="px-4 py-3 text-left">Kode</th>
               <th className="px-4 py-3 text-left">Nama Akun</th>
+              <th className="px-4 py-3">Jenis</th>
+              <th className="px-4 py-3 text-left">Parent</th>
               <th className="px-4 py-3">Kategori</th>
               <th className="px-4 py-3">Tipe</th>
               <th className="px-4 py-3">Status</th>
@@ -282,13 +360,13 @@ export default function ChartOfAccountsManager() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   Loading...
                 </td>
               </tr>
             ) : rekening.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                   Tidak ada data
                 </td>
               </tr>
@@ -298,7 +376,19 @@ export default function ChartOfAccountsManager() {
                   <td className="px-4 py-3 font-mono font-bold">
                     {item.kode_rekening}
                   </td>
-                  <td className="px-4 py-3">{item.nama_rekening}</td>
+                  <td className="px-4 py-3">
+                    <span className={item.jenis_akun === 'child' ? 'pl-4' : ''}>
+                      {item.nama_rekening}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center capitalize">
+                    <span className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                      {item.jenis_akun || 'child'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-slate-500">
+                    {item.parent_kode_rekening || '-'}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <span
                       className={`px-3 py-1 rounded capitalize text-xs font-semibold ${

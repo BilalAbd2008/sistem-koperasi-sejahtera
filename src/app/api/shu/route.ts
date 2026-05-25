@@ -10,6 +10,13 @@ const defaultAllocations = [
   { key: "sosial", label: "Sosial", percent: 5 },
 ];
 
+type IncomeStatementRow = RowDataPacket & {
+  kategori: "pendapatan" | "beban";
+  tipeNormal: "debit" | "kredit";
+  totalDebit: number | string | null;
+  totalKredit: number | string | null;
+};
+
 let shuMigrationPromise: Promise<void> | null = null;
 
 async function ensureShuTables(connection: PoolConnection) {
@@ -77,7 +84,9 @@ export async function GET(request: NextRequest) {
     const periode =
       request.nextUrl.searchParams.get("periode") ||
       `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
-    const { start, end } = getPeriodBounds(periode);
+    const bounds = getPeriodBounds(periode);
+    const start = request.nextUrl.searchParams.get("startDate") || bounds.start;
+    const end = request.nextUrl.searchParams.get("endDate") || bounds.end;
 
     const connection = await pool.getConnection();
     try {
@@ -92,18 +101,44 @@ export async function GET(request: NextRequest) {
         [periode],
       );
 
-      const [incomeRows] = await connection.query<RowDataPacket[]>(
+      const [incomeRows] = await connection.query<IncomeStatementRow[]>(
         `SELECT
-          SUM(CASE WHEN jenis_transaksi IN ('Pendapatan Bunga', 'Pendapatan Lain-lain') AND tipe = 'kredit' THEN jumlah ELSE 0 END) AS pendapatan,
-          SUM(CASE WHEN jenis_transaksi IN ('Gaji & Honorarium', 'Biaya Administrasi', 'Biaya Pemeliharaan') AND tipe = 'debit' THEN jumlah ELSE 0 END) AS beban
-        FROM transaksi_lain
-        WHERE tanggal_transaksi >= ? AND tanggal_transaksi <= ?`,
+          r.kategori,
+          r.tipe_normal AS tipeNormal,
+          COALESCE(SUM(CASE WHEN ju.id IS NOT NULL AND jd.posisi = 'debit' THEN jd.jumlah ELSE 0 END), 0) AS totalDebit,
+          COALESCE(SUM(CASE WHEN ju.id IS NOT NULL AND jd.posisi = 'kredit' THEN jd.jumlah ELSE 0 END), 0) AS totalKredit
+        FROM rekening r
+        LEFT JOIN jurnal_detail jd ON jd.kode_rekening = r.kode_rekening
+        LEFT JOIN jurnal_umum ju
+          ON ju.id = jd.id_jurnal
+          AND ju.status_posting = 'posted'
+          AND DATE(ju.tanggal_jurnal) BETWEEN ? AND ?
+        WHERE r.status = 'aktif'
+          AND r.kategori IN ('pendapatan', 'beban')
+        GROUP BY r.kode_rekening, r.kategori, r.tipe_normal`,
         [start, end],
       );
 
-      const totalRevenues = Number(incomeRows[0]?.pendapatan || 0);
-      const totalExpenses = Number(incomeRows[0]?.beban || 0);
-      const totalShu = Math.max(totalRevenues - totalExpenses, 0);
+      const incomeStatementRows = incomeRows.map((row) => {
+        const totalDebit = Number(row.totalDebit || 0);
+        const totalKredit = Number(row.totalKredit || 0);
+        const amount =
+          row.tipeNormal === "kredit"
+            ? totalKredit - totalDebit
+            : totalDebit - totalKredit;
+
+        return {
+          kategori: row.kategori,
+          amount: Math.max(amount, 0),
+        };
+      });
+      const totalRevenues = incomeStatementRows
+        .filter((row) => row.kategori === "pendapatan")
+        .reduce((sum, row) => sum + row.amount, 0);
+      const totalExpenses = incomeStatementRows
+        .filter((row) => row.kategori === "beban")
+        .reduce((sum, row) => sum + row.amount, 0);
+      const totalShu = totalRevenues - totalExpenses;
 
       const [memberRows] = await connection.query<RowDataPacket[]>(
         `SELECT

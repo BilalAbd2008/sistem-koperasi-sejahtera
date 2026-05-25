@@ -5,6 +5,7 @@ import type { FormEvent } from 'react';
 
 interface LedgerEntry {
   id: number;
+  systemType?: 'legacy' | 'modern';
   tanggal_jurnal?: string;
   tanggal_transaksi?: string;
   nomor_jurnal?: string;
@@ -14,6 +15,8 @@ interface LedgerEntry {
   jumlah: number | string;
   keterangan: string;
   nama_anggota?: string;
+  nama_rekening?: string;
+  tipe_normal?: 'debit' | 'kredit';
   debit: number | string | null;
   kredit: number | string | null;
   saldo: number | string | null;
@@ -23,6 +26,9 @@ interface Rekening {
   kode_rekening: string;
   nama_rekening: string;
   kategori: string;
+  tipe_normal?: 'debit' | 'kredit';
+  jenis_akun?: 'parent' | 'child';
+  parent_kode_rekening?: string | null;
 }
 
 const toNumber = (value: number | string | null | undefined) => {
@@ -38,7 +44,13 @@ const formatCurrency = (value: number | string | null | undefined) => {
   }).format(Math.abs(toNumber(value)));
 };
 
-const toDateInput = (value: Date) => value.toISOString().slice(0, 10);
+const toDateInput = (value: Date) => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+const toMonthInput = (dateValue: string) => dateValue.slice(0, 7);
 
 const firstDayOfMonth = () => {
   const now = new Date();
@@ -67,28 +79,14 @@ export default function LedgerViewer() {
 
   const fetchRekening = async () => {
     try {
-      const params = new URLSearchParams({
-        periode_awal: startDate,
-        periode_akhir: endDate,
-        system: 'old',
-      });
-      const res = await fetch(`/api/laporan-keuangan/trial-balance?${params}`);
+      const res = await fetch('/api/rekening?status=aktif');
       const data = await res.json();
-      const legacyAccounts = (data.data || []).map(
-        (item: { kodeRekening: string; namaRekening: string; kategori: string }) => ({
-          kode_rekening: item.namaRekening,
-          nama_rekening: item.namaRekening,
-          kategori: item.kategori,
-        }),
+      const accounts = (data.data || []) as Rekening[];
+      setRekening(accounts);
+      setSelectedAccount((current) =>
+        accounts.some((item) => item.kode_rekening === current) ? current : '',
       );
-      setRekening(legacyAccounts);
-      if (legacyAccounts.length > 0) {
-        setSelectedAccount((current) =>
-          legacyAccounts.some((item: Rekening) => item.kode_rekening === current)
-            ? current
-            : legacyAccounts[0].kode_rekening,
-        );
-      } else {
+      if (accounts.length === 0) {
         setSelectedAccount('');
         setEntries([]);
       }
@@ -98,21 +96,27 @@ export default function LedgerViewer() {
   };
 
   const fetchLedger = async () => {
-    if (!selectedAccount) return;
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        akun: selectedAccount,
         periode_awal: startDate,
         periode_akhir: endDate,
-        system: 'old',
+        system: 'new',
       });
+      if (selectedAccount) {
+        params.set('akun', selectedAccount);
+      }
 
       const res = await fetch(`/api/buku-besar?${params}`);
       const data = await res.json();
       const payload = data.data || {};
 
-      setEntries((payload.old || []) as LedgerEntry[]);
+      setEntries(
+        ((payload.new || []) as LedgerEntry[]).map((entry) => ({
+          ...entry,
+          systemType: 'modern',
+        })),
+      );
     } catch (error) {
       console.error('Error fetching ledger:', error);
       alert('Error loading ledger: ' + String(error));
@@ -124,23 +128,63 @@ export default function LedgerViewer() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchRekening();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate]);
+  }, []);
 
   useEffect(() => {
-    if (selectedAccount) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    const refreshAccounts = () => void fetchRekening();
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'accounting-accounts-refresh') {
+        refreshAccounts();
+      }
+    };
+
+    window.addEventListener('focus', refreshAccounts);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('focus', refreshAccounts);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchLedger();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccount, startDate, endDate]);
+
+  useEffect(() => {
+    const refreshLedger = () => {
       void fetchLedger();
-    }
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'accounting-ledger-refresh') {
+        refreshLedger();
+      }
+    };
+
+    window.addEventListener('focus', refreshLedger);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('focus', refreshLedger);
+      window.removeEventListener('storage', handleStorage);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccount, startDate, endDate]);
 
   const selectedAccountName =
-    rekening.find((r) => r.kode_rekening === selectedAccount)?.nama_rekening || '-';
+    rekening.find((r) => r.kode_rekening === selectedAccount)?.nama_rekening || 'Semua rekening';
+  const isChildAccount = (item: Rekening) =>
+    item.jenis_akun === 'child' || (!!item.parent_kode_rekening && item.jenis_akun !== 'parent');
+  const accountOptionLabel = (item: Rekening) =>
+    `${isChildAccount(item) ? '\u00A0\u00A0\u00A0\u00A0' : ''}${item.kode_rekening} ${item.nama_rekening}`;
 
   const totalDebit = entries.reduce((sum, e) => sum + toNumber(e.debit), 0);
   const totalKredit = entries.reduce((sum, e) => sum + toNumber(e.kredit), 0);
-  const finalBalance = totalDebit - totalKredit;
+  const selectedAccountMeta = rekening.find((r) => r.kode_rekening === selectedAccount);
+  const finalBalance =
+    selectedAccount && selectedAccountMeta?.tipe_normal === 'kredit'
+      ? totalKredit - totalDebit
+      : totalDebit - totalKredit;
 
   const openEdit = (entry: LedgerEntry) => {
     const debit = toNumber(entry.debit);
@@ -173,7 +217,8 @@ export default function LedgerViewer() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: editingEntry.id,
-        akun: selectedAccount,
+        system: editingEntry.systemType === 'modern' ? 'new' : 'old',
+        akun: selectedAccount || editingEntry.akun || editingEntry.kode_rekening,
         ...editForm,
       }),
     });
@@ -188,12 +233,19 @@ export default function LedgerViewer() {
   };
 
   const handleDelete = async (entry: LedgerEntry) => {
-    if (!window.confirm(`Hapus transaksi ${entry.keterangan || entry.id}?`)) return;
+    const deleteLabel =
+      entry.systemType === 'modern'
+        ? `jurnal ${entry.nomor_jurnal || entry.id} beserta semua detailnya`
+        : `transaksi ${entry.keterangan || entry.id}`;
+    if (!window.confirm(`Hapus ${deleteLabel}?`)) return;
 
     const response = await fetch('/api/buku-besar', {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: entry.id }),
+      body: JSON.stringify({
+        id: entry.id,
+        system: entry.systemType === 'modern' ? 'new' : 'old',
+      }),
     });
     const result = await response.json();
     if (!response.ok || !result.success) {
@@ -215,11 +267,14 @@ export default function LedgerViewer() {
           <select
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
+            onFocus={() => void fetchRekening()}
+            onMouseDown={() => void fetchRekening()}
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
           >
+            <option value="">Semua rekening</option>
             {rekening.map((r) => (
               <option key={r.kode_rekening} value={r.kode_rekening}>
-                {r.kode_rekening} - {r.nama_rekening}
+                {accountOptionLabel(r)}
               </option>
             ))}
           </select>
@@ -262,7 +317,13 @@ export default function LedgerViewer() {
       <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
         <h2 className="mb-2 text-lg font-bold text-slate-900">{selectedAccountName}</h2>
         <p className="text-sm text-slate-600">
-          Kode: <span className="font-mono">{selectedAccount}</span>
+          Periode: <span className="font-mono">{toMonthInput(startDate)}</span>
+          {selectedAccount ? (
+            <>
+              {' '}
+              | Kode: <span className="font-mono">{selectedAccount}</span>
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -273,6 +334,7 @@ export default function LedgerViewer() {
             <tr className="bg-slate-50 text-slate-500">
               <th className="px-4 py-3 text-left">Tanggal</th>
               <th className="px-4 py-3 text-left">Nomor Referensi</th>
+              <th className="px-4 py-3 text-left">Rekening</th>
               <th className="px-4 py-3 text-left">Keterangan</th>
               <th className="px-4 py-3 text-left">Anggota</th>
               <th className="px-4 py-3 text-right">Debit</th>
@@ -284,13 +346,13 @@ export default function LedgerViewer() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                   Memuat data...
                 </td>
               </tr>
             ) : entries.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
                   Tidak ada data
                 </td>
               </tr>
@@ -304,6 +366,10 @@ export default function LedgerViewer() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">
                     {entry.nomor_jurnal || entry.id}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="font-mono text-xs text-slate-500">{entry.kode_rekening}</div>
+                    <div className="font-medium text-slate-700">{entry.nama_rekening || '-'}</div>
                   </td>
                   <td className="px-4 py-3">{entry.keterangan}</td>
                   <td className="px-4 py-3 text-sm">{entry.nama_anggota || '-'}</td>
@@ -344,7 +410,7 @@ export default function LedgerViewer() {
           </tbody>
           <tfoot>
             <tr className="bg-slate-50 font-bold">
-              <td colSpan={4} className="px-4 py-3 text-right">
+              <td colSpan={5} className="px-4 py-3 text-right">
                 TOTAL
               </td>
               <td className="px-4 py-3 text-right font-mono text-sky-600">
@@ -382,7 +448,7 @@ export default function LedgerViewer() {
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-sm text-slate-500">Tipe Normal</p>
           <p className="text-lg font-bold capitalize text-slate-900">
-            {rekening.find((r) => r.kode_rekening === selectedAccount)?.kategori || '-'}
+            {selectedAccountMeta?.tipe_normal || selectedAccountMeta?.kategori || 'gabungan'}
           </p>
         </div>
       </div>

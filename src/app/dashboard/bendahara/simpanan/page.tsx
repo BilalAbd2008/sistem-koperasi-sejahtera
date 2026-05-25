@@ -30,6 +30,13 @@ interface NasabahItem {
   no_anggota: string;
 }
 
+const toDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export default function BendaharaSimpananPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserData | null>(null);
@@ -43,10 +50,12 @@ export default function BendaharaSimpananPage() {
   const [showTambahModal, setShowTambahModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingItem, setEditingItem] = useState<SimpananItem | null>(null);
+  const [memberQuery, setMemberQuery] = useState("");
   const [formData, setFormData] = useState({
     id_anggota: "",
     jenis_simpanan: "wajib",
     jumlah: "",
+    tanggal_simpanan: toDateInput(new Date()),
     status: "aktif",
   });
 
@@ -106,10 +115,12 @@ export default function BendaharaSimpananPage() {
 
   const handleEdit = async (item: SimpananItem) => {
     setEditingItem(item);
+    setMemberQuery(`${item.nama} - ${item.no_anggota}`);
     setFormData({
       id_anggota: String(item.id_anggota),
       jenis_simpanan: item.jenis_simpanan,
       jumlah: String(item.jumlah),
+      tanggal_simpanan: item.tanggal_simpanan?.slice(0, 10) || toDateInput(new Date()),
       status: item.status,
     });
     setShowEditModal(true);
@@ -128,6 +139,7 @@ export default function BendaharaSimpananPage() {
           id_anggota: Number(formData.id_anggota),
           jenis_simpanan: formData.jenis_simpanan,
           jumlah: Number(formData.jumlah),
+          tanggal_simpanan: formData.tanggal_simpanan,
           status: formData.status,
         }),
       });
@@ -135,7 +147,8 @@ export default function BendaharaSimpananPage() {
         loadData();
         setShowEditModal(false);
         setEditingItem(null);
-        setFormData({ id_anggota: "", jenis_simpanan: "wajib", jumlah: "", status: "aktif" });
+        setMemberQuery("");
+        setFormData({ id_anggota: "", jenis_simpanan: "wajib", jumlah: "", tanggal_simpanan: toDateInput(new Date()), status: "aktif" });
       }
     } catch (error) {
       console.error("Error updating simpanan:", error);
@@ -158,7 +171,8 @@ export default function BendaharaSimpananPage() {
   };
 
   const handleTambahSimpanan = async () => {
-    setFormData({ id_anggota: "", jenis_simpanan: "wajib", jumlah: "", status: "aktif" });
+    setMemberQuery("");
+    setFormData({ id_anggota: "", jenis_simpanan: "wajib", jumlah: "", tanggal_simpanan: toDateInput(new Date()), status: "aktif" });
     setEditingItem(null);
     setShowTambahModal(true);
   };
@@ -177,6 +191,7 @@ export default function BendaharaSimpananPage() {
           id_anggota: Number(formData.id_anggota),
           jenis_simpanan: formData.jenis_simpanan,
           jumlah: Number(formData.jumlah),
+          tanggal_simpanan: formData.tanggal_simpanan,
           status: formData.status,
         }),
       });
@@ -184,7 +199,8 @@ export default function BendaharaSimpananPage() {
       if (response.ok) {
         loadData();
         setShowTambahModal(false);
-        setFormData({ id_anggota: "", jenis_simpanan: "wajib", jumlah: "", status: "aktif" });
+        setMemberQuery("");
+        setFormData({ id_anggota: "", jenis_simpanan: "wajib", jumlah: "", tanggal_simpanan: toDateInput(new Date()), status: "aktif" });
       }
     } catch (error) {
       console.error("Error creating simpanan:", error);
@@ -225,6 +241,18 @@ export default function BendaharaSimpananPage() {
   }));
   const exportTitle = `Simpanan ${jenisFilter === "semua" ? "Semua Jenis" : labelJenis(jenisFilter)}`;
   const exportFileName = `simpanan_${jenisFilter}_${nasabahFilter}_${range}`;
+  const filteredMemberOptions = nasabah.filter((item) => {
+    const query = memberQuery.toLowerCase();
+    return (
+      item.nama.toLowerCase().includes(query) ||
+      item.no_anggota.toLowerCase().includes(query)
+    );
+  });
+
+  const chooseMember = (item: NasabahItem) => {
+    setFormData({ ...formData, id_anggota: String(item.id) });
+    setMemberQuery(`${item.nama} - ${item.no_anggota}`);
+  };
 
   const handleExportExcel = () => {
     exportToExcel(exportRows, "Simpanan", `${exportFileName}.xlsx`);
@@ -517,19 +545,37 @@ export default function BendaharaSimpananPage() {
           <div className="w-96 rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-4 text-xl font-bold text-slate-900">Tambah Simpanan</h2>
             <form onSubmit={handleTambahSubmit} className="space-y-4">
-              <select
-                value={formData.id_anggota}
-                onChange={(e) => setFormData({ ...formData, id_anggota: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2"
-                required
-              >
-                <option value="">Pilih nasabah simpan pinjam</option>
-                {nasabah.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.nama} - {item.no_anggota}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <input
+                  value={memberQuery}
+                  onChange={(event) => {
+                    setMemberQuery(event.target.value);
+                    setFormData({ ...formData, id_anggota: "" });
+                  }}
+                  className="w-full rounded-lg border border-slate-200 px-4 py-2"
+                  placeholder="Cari nama / no anggota..."
+                  required
+                />
+                {memberQuery && !formData.id_anggota ? (
+                  <div className="mt-2 max-h-40 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {filteredMemberOptions.slice(0, 8).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => chooseMember(item)}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-semibold text-slate-900">
+                          {item.nama}
+                        </span>
+                        <span className="text-xs font-bold text-slate-500">
+                          {item.no_anggota}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <select
                 value={formData.jenis_simpanan}
                 onChange={(e) => setFormData({ ...formData, jenis_simpanan: e.target.value })}
@@ -545,6 +591,13 @@ export default function BendaharaSimpananPage() {
                 value={formData.jumlah}
                 onChange={(e) => setFormData({ ...formData, jumlah: e.target.value })}
                 placeholder="Jumlah"
+                className="w-full rounded-lg border border-slate-200 px-4 py-2"
+                required
+              />
+              <input
+                type="date"
+                value={formData.tanggal_simpanan}
+                onChange={(e) => setFormData({ ...formData, tanggal_simpanan: e.target.value })}
                 className="w-full rounded-lg border border-slate-200 px-4 py-2"
                 required
               />
@@ -566,19 +619,37 @@ export default function BendaharaSimpananPage() {
           <div className="w-96 rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-4 text-xl font-bold text-slate-900">Edit Simpanan</h2>
             <form onSubmit={handleEditSubmit} className="space-y-4">
-              <select
-                value={formData.id_anggota}
-                onChange={(e) => setFormData({ ...formData, id_anggota: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2"
-                required
-              >
-                <option value="">Pilih nasabah simpan pinjam</option>
-                {nasabah.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.nama} - {item.no_anggota}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <input
+                  value={memberQuery}
+                  onChange={(event) => {
+                    setMemberQuery(event.target.value);
+                    setFormData({ ...formData, id_anggota: "" });
+                  }}
+                  className="w-full rounded-lg border border-slate-200 px-4 py-2"
+                  placeholder="Cari nama / no anggota..."
+                  required
+                />
+                {memberQuery && !formData.id_anggota ? (
+                  <div className="mt-2 max-h-40 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {filteredMemberOptions.slice(0, 8).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => chooseMember(item)}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-semibold text-slate-900">
+                          {item.nama}
+                        </span>
+                        <span className="text-xs font-bold text-slate-500">
+                          {item.no_anggota}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <select
                 value={formData.jenis_simpanan}
                 onChange={(e) => setFormData({ ...formData, jenis_simpanan: e.target.value })}
@@ -593,6 +664,13 @@ export default function BendaharaSimpananPage() {
                 type="number"
                 value={formData.jumlah}
                 onChange={(e) => setFormData({ ...formData, jumlah: e.target.value })}
+                className="w-full rounded-lg border border-slate-200 px-4 py-2"
+                required
+              />
+              <input
+                type="date"
+                value={formData.tanggal_simpanan}
+                onChange={(e) => setFormData({ ...formData, tanggal_simpanan: e.target.value })}
                 className="w-full rounded-lg border border-slate-200 px-4 py-2"
                 required
               />

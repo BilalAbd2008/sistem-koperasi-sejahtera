@@ -162,34 +162,30 @@ export async function POST(request: NextRequest) {
         },
       ]);
 
-      try {
-        await postJournalEntry(connection, {
-          tanggalJurnal: periodToDate(bulan),
-          periode: bulan,
-          deskripsi: `Utang Toko - Anggota #${id_anggota}`,
-          tipeJurnal: "manual",
-          idPengguna: Number(idPengguna || 1),
-          idReferensi: result.insertId,
-          lines: [
-            {
-              kodeRekening: "1-1500",
-              posisi: "debit",
-              jumlah: amount,
-              keterangan: "Piutang toko anggota",
-              idAnggota: Number(id_anggota),
-            },
-            {
-              kodeRekening: "4-3000",
-              posisi: "kredit",
-              jumlah: amount,
-              keterangan: "Pendapatan toko anggota",
-              idAnggota: Number(id_anggota),
-            },
-          ],
-        });
-      } catch (journalError) {
-        console.warn("Utang toko journal entry failed (non-blocking):", journalError);
-      }
+      await postJournalEntry(connection, {
+        tanggalJurnal: periodToDate(bulan),
+        periode: bulan,
+        deskripsi: `Utang Toko - Anggota #${id_anggota}`,
+        tipeJurnal: "manual",
+        idPengguna: Number(idPengguna || 1),
+        idReferensi: result.insertId,
+        lines: [
+          {
+            kodeRekening: "1-1500",
+            posisi: "debit",
+            jumlah: amount,
+            keterangan: "Piutang toko anggota",
+            idAnggota: Number(id_anggota),
+          },
+          {
+            kodeRekening: "4-3000",
+            posisi: "kredit",
+            jumlah: amount,
+            keterangan: "Pendapatan toko anggota",
+            idAnggota: Number(id_anggota),
+          },
+        ],
+      });
 
       await connection.commit();
 

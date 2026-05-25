@@ -43,7 +43,7 @@ export default function BalanceSheetSectionReport({ mode }: { mode: SectionMode 
       const params = new URLSearchParams({
         periode_awal: `${year}-01-01`,
         periode_akhir: `${year}-12-31`,
-        system: "old",
+        system: "new",
       });
       const response = await fetch(`/api/laporan-keuangan/neraca?${params}`);
       const result = await response.json();
@@ -52,7 +52,7 @@ export default function BalanceSheetSectionReport({ mode }: { mode: SectionMode 
         throw new Error(result.error || "Gagal memuat laporan");
       }
 
-      setData(result.data?.old || null);
+      setData(result.data?.new || null);
     } catch (err) {
       setError(String(err));
       setData(null);

@@ -1,10 +1,16 @@
-import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-import { addBalancedJournal, installmentJournal } from "@/lib/accounting";
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
+import {
+  addBalancedJournal,
+  createInstallmentJournalEntry,
+  installmentJournal,
+  postJournalEntry,
+} from "@/lib/accounting";
 
 interface LoanRow extends RowDataPacket {
   id: number;
   id_anggota: number;
   jumlah_pinjam: number;
+  jumlah_bunga: number | null;
   jangka_waktu: number;
   tanggal_mulai: string | Date;
   tanggal_tagih: number;
@@ -32,6 +38,11 @@ const daysInMonth = (year: number, monthIndex: number) =>
 const makeDueDate = (year: number, monthIndex: number, dueDay: number) =>
   new Date(year, monthIndex, Math.min(Math.max(dueDay, 1), daysInMonth(year, monthIndex)));
 
+const calculateInstallmentInterest = (totalInterest: number | null, tenor: number) => {
+  const tenorValue = Math.max(Number(tenor || 0), 1);
+  return Math.round((Number(totalInterest || 0) / tenorValue) * 100) / 100;
+};
+
 const getFirstDueDate = (startValue: string | Date, dueDay: number) => {
   const startDate = toLocalDate(startValue);
   const sameMonthDue = makeDueDate(startDate.getFullYear(), startDate.getMonth(), dueDay);
@@ -50,6 +61,7 @@ export async function runLoanPaymentAutomation(connection: PoolConnection) {
       p.id,
       p.id_anggota,
       p.jumlah_pinjam,
+      p.jumlah_bunga,
       p.jangka_waktu,
       p.tanggal_mulai,
       p.tanggal_tagih,
@@ -89,17 +101,32 @@ export async function runLoanPaymentAutomation(connection: PoolConnection) {
       if (existingRows.length > 0) continue;
 
       const amount = Math.min(monthlyPrincipal, remaining);
-      await connection.query(
+      const interest = calculateInstallmentInterest(loan.jumlah_bunga, tenor);
+      const [result] = await connection.query<ResultSetHeader>(
         "INSERT INTO pembayaran_pinjaman (id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan) VALUES (?, ?, ?, ?)",
         [loan.id, amount, dueDateText, marker],
       );
+      const paymentId = Number(result.insertId);
+
       await addBalancedJournal(
         connection,
-        installmentJournal(Number(loan.id_anggota), amount).map((line) => ({
+        installmentJournal(Number(loan.id_anggota), amount, interest).map((line) => ({
           ...line,
           date: dueDateText,
           description: `${line.description} otomatis`,
         })),
+      );
+      await postJournalEntry(
+        connection,
+        createInstallmentJournalEntry(
+          Number(loan.id_anggota),
+          amount,
+          interest,
+          dueDateText,
+          dueDateText.slice(0, 7),
+          1,
+          paymentId,
+        ),
       );
 
       remaining -= amount;

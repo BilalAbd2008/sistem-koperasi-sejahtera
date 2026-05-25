@@ -115,6 +115,7 @@ export default function BendaharaPinjamanPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingItem, setEditingItem] = useState<PinjamanItem | null>(null);
   const [search, setSearch] = useState("");
+  const [memberQuery, setMemberQuery] = useState("");
   const [nasabahFilter, setNasabahFilter] = useState("semua");
   const [periodFilter, setPeriodFilter] = useState("semua");
   const [billingStartDate, setBillingStartDate] = useState(() => toDateInput(new Date()));
@@ -317,6 +318,19 @@ export default function BendaharaPinjamanPage() {
       status: "aktif",
     });
 
+  const filteredMemberOptions = nasabah.filter((item) => {
+    const query = memberQuery.toLowerCase();
+    return (
+      item.nama.toLowerCase().includes(query) ||
+      item.no_anggota.toLowerCase().includes(query)
+    );
+  });
+
+  const chooseMember = (item: NasabahItem) => {
+    setFormData({ ...formData, id_anggota: String(item.id) });
+    setMemberQuery(`${item.nama} - ${item.no_anggota}`);
+  };
+
   const buildExportRows = () =>
     filteredRows.map((item) => ({
       "ID Pinjaman": `P-${item.id}`,
@@ -401,6 +415,8 @@ export default function BendaharaPinjamanPage() {
 
   const handleEdit = async (item: PinjamanItem) => {
     setEditingItem(item);
+    const member = nasabah.find((row) => row.id === item.id_anggota);
+    setMemberQuery(`${item.nama} - ${member?.no_anggota || item.id_anggota}`);
     setFormData({
       id_anggota: String(item.id_anggota),
       jumlah_pinjam: String(item.jumlah_pinjam),
@@ -436,6 +452,7 @@ export default function BendaharaPinjamanPage() {
         loadData();
         setShowEditModal(false);
         setEditingItem(null);
+        setMemberQuery("");
         resetForm();
       }
     } catch (error) {
@@ -486,6 +503,7 @@ export default function BendaharaPinjamanPage() {
     if (response.ok) {
       loadData();
       setShowTambahModal(false);
+      setMemberQuery("");
       resetForm();
     }
   };
@@ -530,6 +548,7 @@ export default function BendaharaPinjamanPage() {
                   type="button"
                   onClick={() => {
                     resetForm();
+                    setMemberQuery("");
                     setShowTambahModal(true);
                   }}
                   className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
@@ -753,19 +772,37 @@ export default function BendaharaPinjamanPage() {
           <div className="w-96 rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-4 text-xl font-bold text-slate-900">Tambah Pinjaman</h2>
             <form onSubmit={handleTambahSubmit} className="space-y-4">
-              <select
-                value={formData.id_anggota}
-                onChange={(e) => setFormData({ ...formData, id_anggota: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2 text-slate-900"
-                required
-              >
-                <option value="">Pilih nasabah simpan pinjam</option>
-                {nasabah.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.nama} - {item.no_anggota}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <input
+                  value={memberQuery}
+                  onChange={(event) => {
+                    setMemberQuery(event.target.value);
+                    setFormData({ ...formData, id_anggota: "" });
+                  }}
+                  className="w-full rounded-lg border border-slate-200 px-4 py-2 text-slate-900"
+                  placeholder="Cari nama / no anggota..."
+                  required
+                />
+                {memberQuery && !formData.id_anggota ? (
+                  <div className="mt-2 max-h-40 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {filteredMemberOptions.slice(0, 8).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => chooseMember(item)}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-semibold text-slate-900">
+                          {item.nama}
+                        </span>
+                        <span className="text-xs font-bold text-slate-500">
+                          {item.no_anggota}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <input
                 type="number"
                 value={formData.jumlah_pinjam}
@@ -827,19 +864,37 @@ export default function BendaharaPinjamanPage() {
           <div className="w-96 rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-4 text-xl font-bold text-slate-900">Edit Pinjaman</h2>
             <form onSubmit={handleEditSubmit} className="space-y-4">
-              <select
-                value={formData.id_anggota}
-                onChange={(e) => setFormData({ ...formData, id_anggota: e.target.value })}
-                className="w-full rounded-lg border border-slate-200 px-4 py-2 text-slate-900"
-                required
-              >
-                <option value="">Pilih nasabah simpan pinjam</option>
-                {nasabah.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.nama} - {item.no_anggota}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <input
+                  value={memberQuery}
+                  onChange={(event) => {
+                    setMemberQuery(event.target.value);
+                    setFormData({ ...formData, id_anggota: "" });
+                  }}
+                  className="w-full rounded-lg border border-slate-200 px-4 py-2 text-slate-900"
+                  placeholder="Cari nama / no anggota..."
+                  required
+                />
+                {memberQuery && !formData.id_anggota ? (
+                  <div className="mt-2 max-h-40 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                    {filteredMemberOptions.slice(0, 8).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => chooseMember(item)}
+                        className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-semibold text-slate-900">
+                          {item.nama}
+                        </span>
+                        <span className="text-xs font-bold text-slate-500">
+                          {item.no_anggota}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
               <input
                 type="number"
                 value={formData.jumlah_pinjam}

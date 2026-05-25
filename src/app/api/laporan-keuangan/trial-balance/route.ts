@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { RowDataPacket } from "mysql2";
 import pool from "@/lib/db";
 import { getTrialBalance } from "@/lib/accounting";
 
 export const dynamic = "force-dynamic";
+
+type TrialBalanceModernRow = RowDataPacket & {
+  kodeRekening: string;
+  namaRekening: string;
+  kategori: string;
+  saldoDebit: number | string | null;
+  saldoKredit: number | string | null;
+};
+
+type TrialBalanceLegacyRow = RowDataPacket & {
+  namaRekening: string;
+  saldoDebit: number | string | null;
+  saldoKredit: number | string | null;
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,8 +58,44 @@ export async function GET(request: NextRequest) {
       const hasModernAccounting =
         Number((tableRows as Array<{ tableCount: number }>)[0]?.tableCount || 0) > 0;
 
-      if (system === "new" && hasModernAccounting && periode) {
-        const data = await getTrialBalance(connection, periode);
+      if (system === "new" && hasModernAccounting) {
+        if (periode) {
+          const data = await getTrialBalance(connection, periode);
+
+          return NextResponse.json({
+            success: true,
+            data,
+            periode: periodeLabel,
+            source: "rekening",
+          });
+        }
+
+        const [rows] = await connection.query<TrialBalanceModernRow[]>(
+          `SELECT
+            r.kode_rekening AS kodeRekening,
+            r.nama_rekening AS namaRekening,
+            r.kategori,
+            COALESCE(SUM(CASE WHEN ju.id IS NOT NULL AND jd.posisi = 'debit' THEN jd.jumlah ELSE 0 END), 0) AS saldoDebit,
+            COALESCE(SUM(CASE WHEN ju.id IS NOT NULL AND jd.posisi = 'kredit' THEN jd.jumlah ELSE 0 END), 0) AS saldoKredit
+          FROM jurnal_detail jd
+          JOIN jurnal_umum ju
+            ON ju.id = jd.id_jurnal
+            AND ju.status_posting = 'posted'
+            AND DATE(ju.tanggal_jurnal) BETWEEN ? AND ?
+          JOIN rekening r ON r.kode_rekening = jd.kode_rekening
+          WHERE r.status = 'aktif'
+          GROUP BY r.kode_rekening, r.nama_rekening, r.kategori
+          ORDER BY r.kode_rekening`,
+          [periodeAwal, periodeAkhir],
+        );
+
+        const data = rows.map((row) => ({
+          kodeRekening: row.kodeRekening,
+          namaRekening: row.namaRekening,
+          kategori: row.kategori,
+          saldoDebit: Number(row.saldoDebit || 0),
+          saldoKredit: Number(row.saldoKredit || 0),
+        }));
 
         return NextResponse.json({
           success: true,
@@ -54,7 +105,7 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      const [rows] = await connection.query(
+      const [rows] = await connection.query<TrialBalanceLegacyRow[]>(
         `SELECT
           jenis_transaksi AS namaRekening,
           SUM(CASE WHEN tipe = 'debit' THEN jumlah ELSE 0 END) AS saldoDebit,
@@ -66,11 +117,7 @@ export async function GET(request: NextRequest) {
         [periodeAwal, periodeAkhir],
       );
 
-      const data = (rows as Array<{
-        namaRekening: string;
-        saldoDebit: number | string | null;
-        saldoKredit: number | string | null;
-      }>).map((row, index) => ({
+      const data = rows.map((row, index) => ({
         kodeRekening: `SP-${String(index + 1).padStart(3, "0")}`,
         namaRekening: row.namaRekening,
         kategori: "simpan pinjam",

@@ -44,8 +44,20 @@ const formatMoney = (value: number) =>
 const currentPeriod = () =>
   `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
 
+const periodStart = () => `${new Date().getFullYear()}-01-01`;
+
+const todayInput = () => {
+  const date = new Date();
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export default function BendaharaShuPage() {
   const [periode, setPeriode] = useState(currentPeriod());
+  const [startDate, setStartDate] = useState(periodStart());
+  const [endDate, setEndDate] = useState(todayInput());
   const [data, setData] = useState<ShuResponseData | null>(null);
   const [allocations, setAllocations] = useState<AllocationItem[]>([]);
   const [selectedName, setSelectedName] = useState("");
@@ -70,7 +82,12 @@ export default function BendaharaShuPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/shu?periode=${periode}`);
+      const params = new URLSearchParams({
+        periode,
+        startDate,
+        endDate,
+      });
+      const response = await fetch(`/api/shu?${params}`);
       const result = await response.json();
       if (result.success) {
         const nextData = result.data as ShuResponseData;
@@ -196,7 +213,7 @@ export default function BendaharaShuPage() {
   };
 
   const handleExportExcel = () => {
-    exportToExcel(buildExportRows(), "SHU", `shu_${periode}.xlsx`);
+    exportToExcel(buildExportRows(), "SHU", `shu_${startDate}_${endDate}.xlsx`);
   };
 
   const handleExportPDF = async () => {
@@ -216,7 +233,7 @@ export default function BendaharaShuPage() {
     doc.text("Laporan Pembagian SHU", margin, 10);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text(`Periode ${periode}`, margin, 17);
+    doc.text(`Periode ${startDate} s/d ${endDate}`, margin, 17);
 
     doc.setTextColor(15, 23, 42);
     doc.setFont("helvetica", "bold");
@@ -267,7 +284,7 @@ export default function BendaharaShuPage() {
       y += 8;
     });
 
-    doc.save(`shu_${periode}.pdf`);
+    doc.save(`shu_${startDate}_${endDate}.pdf`);
   };
 
   return (
@@ -284,6 +301,25 @@ export default function BendaharaShuPage() {
             onChange={(event) => setPeriode(event.target.value)}
             className="rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
             placeholder="2026-05"
+          />
+        </label>
+        <label className="text-sm font-semibold text-slate-700">
+          <span className="mb-1 block">Tanggal Awal</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
+          />
+        </label>
+        <label className="text-sm font-semibold text-slate-700">
+          <span className="mb-1 block">Tanggal Akhir</span>
+          <input
+            type="date"
+            value={endDate}
+            min={startDate}
+            onChange={(event) => setEndDate(event.target.value)}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
           />
         </label>
         <button
@@ -430,21 +466,20 @@ export default function BendaharaShuPage() {
           </div>
 
           <div className="overflow-auto">
-            <div className="min-w-[980px] bg-white p-4">
+            <div className="min-w-[860px] bg-white p-4">
               <table className="w-full table-fixed border-collapse text-sm [&_thead]:hidden [&_tr>*:first-child]:hidden">
                 <colgroup>
                   <col className="hidden" />
                   <col className="w-[150px]" />
-                  <col className="w-[150px]" />
+                  <col className="w-[210px]" />
                   <col className="w-[64px]" />
                   <col className="w-[230px]" />
-                  <col className="w-[230px]" />
-                  <col className="w-[64px]" />
-                  <col className="w-[150px]" />
+                  <col className="w-[160px]" />
+                  <col className="w-[160px]" />
                 </colgroup>
                 <thead>
                   <tr className="bg-slate-100 text-center text-xs font-bold text-slate-500">
-                    {["", "A", "B", "C", "D", "E", "F", "G"].map((item) => (
+                    {["", "A", "B", "C", "D", "E", "F"].map((item) => (
                       <th key={item} className="border border-slate-200 px-2 py-1">
                         {item}
                       </th>
@@ -454,7 +489,7 @@ export default function BendaharaShuPage() {
                 <tbody>
                   <tr>
                     <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs font-bold text-slate-500">1</td>
-                    <td colSpan={7} className="border border-slate-300 bg-slate-200 px-2 py-2 text-center text-lg font-bold text-blue-950">
+                    <td colSpan={6} className="border border-slate-300 bg-slate-200 px-2 py-2 text-center text-lg font-bold text-blue-950">
                       Saldo Simpanan dan Pinjaman Anggota
                     </td>
                   </tr>
@@ -462,7 +497,7 @@ export default function BendaharaShuPage() {
                     <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs font-bold text-slate-500">2</td>
                     <td className="border border-slate-200 px-2 py-2 font-semibold">No. Anggota</td>
                     <td className="border border-slate-200 px-2 py-2">:</td>
-                    <td colSpan={5} className="whitespace-nowrap border border-slate-200 bg-white px-3 py-2 text-base font-bold text-slate-950">
+                    <td colSpan={4} className="whitespace-nowrap border border-slate-200 bg-white px-3 py-2 text-base font-bold text-slate-950">
                       {selectedMember?.noAnggota || "-"}
                     </td>
                   </tr>
@@ -470,7 +505,7 @@ export default function BendaharaShuPage() {
                     <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs font-bold text-slate-500">3</td>
                     <td className="border border-slate-200 px-2 py-2 font-semibold">Nama Anggota</td>
                     <td className="border border-slate-200 px-2 py-2">:</td>
-                    <td colSpan={5} className="border border-slate-200 px-2 py-2 font-semibold">
+                    <td colSpan={4} className="border border-slate-200 px-2 py-2 font-semibold">
                       <div className="relative max-w-md">
                         <input
                           value={memberSearch}
@@ -532,21 +567,20 @@ export default function BendaharaShuPage() {
                   </tr>
                   <tr>
                     <td className="border border-slate-200 bg-slate-100 px-2 py-3 text-center text-xs font-bold text-slate-500">4</td>
-                    <td colSpan={7} className="border border-slate-200" />
+                    <td colSpan={6} className="border border-slate-200" />
                   </tr>
                   <tr className="bg-blue-50 font-bold text-blue-950">
                     <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs text-slate-500">5</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">No.</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">Jenis Simpanan</td>
                     <td colSpan={2} className="border border-slate-300 px-2 py-2 text-center">Jumlah Simpanan</td>
-                    <td className="border border-slate-300 px-2 py-2 text-center">Keterangan</td>
                     <td colSpan={2} className="border border-slate-300 px-2 py-2" />
                   </tr>
                   {[
-                    ["1", "Simpanan Wajib", 0, ""],
-                    ["2", "Simpanan Lebaran", 0, ""],
-                    ["3", "Simpanan Pendidikan", 0, ""],
-                    ["4", "Simpanan Sukarela", selectedMember?.simpanan || 0, "Dari tabel simpanan"],
+                    ["1", "Simpanan Wajib", 0],
+                    ["2", "Simpanan Lebaran", 0],
+                    ["3", "Simpanan Pendidikan", 0],
+                    ["4", "Simpanan Sukarela", selectedMember?.simpanan || 0],
                   ].map((row, index) => (
                     <tr key={`simpanan-${row[0]}`}>
                       <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs font-bold text-slate-500">{6 + index}</td>
@@ -554,7 +588,6 @@ export default function BendaharaShuPage() {
                       <td className="border border-slate-300 px-2 py-2">{row[1]}</td>
                       <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
                       <td className="border border-slate-300 px-2 py-2 text-right">{Number(row[2]).toLocaleString("id-ID")}</td>
-                      <td className="border border-slate-300 px-2 py-2">{row[3]}</td>
                       <td colSpan={2} className="border border-slate-200 px-2 py-2" />
                     </tr>
                   ))}
@@ -563,23 +596,22 @@ export default function BendaharaShuPage() {
                     <td colSpan={2} className="border border-slate-300 px-2 py-2">Total Simpanan</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
                     <td className="border border-slate-300 px-2 py-2 text-right">{Number(selectedMember?.simpanan || 0).toLocaleString("id-ID")}</td>
-                    <td colSpan={3} className="border border-slate-200" />
+                    <td colSpan={2} className="border border-slate-200" />
                   </tr>
                   <tr>
                     <td className="border border-slate-200 bg-slate-100 px-2 py-3 text-center text-xs font-bold text-slate-500">11</td>
-                    <td colSpan={7} className="border border-slate-200" />
+                    <td colSpan={6} className="border border-slate-200" />
                   </tr>
                   <tr className="bg-blue-50 font-bold text-blue-950">
                     <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs text-slate-500">12</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">No.</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">Jenis Pinjaman</td>
                     <td colSpan={2} className="border border-slate-300 px-2 py-2 text-center">Jumlah Pinjaman</td>
-                    <td className="border border-slate-300 px-2 py-2 text-center">Keterangan</td>
                     <td colSpan={2} className="border border-slate-300 px-2 py-2" />
                   </tr>
                   {[
-                    ["1", "Piutang Simpan Pinjam", selectedMember?.pinjaman || 0, "Dari tabel pinjaman"],
-                    ["2", "Piutang Barang", selectedMember?.utangToko || 0, "Dari utang toko"],
+                    ["1", "Piutang Simpan Pinjam", selectedMember?.pinjaman || 0],
+                    ["2", "Piutang Barang", selectedMember?.utangToko || 0],
                   ].map((row, index) => (
                     <tr key={`pinjaman-${row[0]}`}>
                       <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs font-bold text-slate-500">{13 + index}</td>
@@ -587,7 +619,6 @@ export default function BendaharaShuPage() {
                       <td className="border border-slate-300 px-2 py-2">{row[1]}</td>
                       <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
                       <td className="border border-slate-300 px-2 py-2 text-right">{Number(row[2]).toLocaleString("id-ID")}</td>
-                      <td className="border border-slate-300 px-2 py-2">{row[3]}</td>
                       <td colSpan={2} className="border border-slate-200" />
                     </tr>
                   ))}
@@ -596,23 +627,22 @@ export default function BendaharaShuPage() {
                     <td colSpan={2} className="border border-slate-300 px-2 py-2">Total Pinjaman</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
                     <td className="border border-slate-300 px-2 py-2 text-right">{Number(selectedMember?.partisipasi || 0).toLocaleString("id-ID")}</td>
-                    <td colSpan={3} className="border border-slate-200" />
+                    <td colSpan={2} className="border border-slate-200" />
                   </tr>
                   <tr>
                     <td className="border border-slate-200 bg-slate-100 px-2 py-3 text-center text-xs font-bold text-slate-500">16</td>
-                    <td colSpan={7} className="border border-slate-200" />
+                    <td colSpan={6} className="border border-slate-200" />
                   </tr>
                   <tr className="bg-blue-50 font-bold text-blue-950">
                     <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs text-slate-500">17</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">No.</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">Jenis Partisipasi</td>
                     <td colSpan={2} className="border border-slate-300 px-2 py-2 text-center">Jumlah Partisipasi</td>
-                    <td className="border border-slate-300 px-2 py-2 text-center">Keterangan</td>
                     <td colSpan={2} className="border border-slate-300 px-2 py-2" />
                   </tr>
                   {[
-                    ["1", "Partisipasi Jasa Simpan Pinjam", selectedMember?.simpanan || 0, ""],
-                    ["2", "Partisipasi Jasa Pinjaman Barang", selectedMember?.utangToko || 0, ""],
+                    ["1", "Partisipasi Jasa Simpan Pinjam", selectedMember?.simpanan || 0],
+                    ["2", "Partisipasi Jasa Pinjaman Barang", selectedMember?.utangToko || 0],
                   ].map((row, index) => (
                     <tr key={`partisipasi-${row[0]}`}>
                       <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs font-bold text-slate-500">{18 + index}</td>
@@ -620,7 +650,6 @@ export default function BendaharaShuPage() {
                       <td className="border border-slate-300 px-2 py-2">{row[1]}</td>
                       <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
                       <td className="border border-slate-300 px-2 py-2 text-right">{Number(row[2]).toLocaleString("id-ID")}</td>
-                      <td className="border border-slate-300 px-2 py-2">{row[3]}</td>
                       <td colSpan={2} className="border border-slate-200" />
                     </tr>
                   ))}
@@ -629,23 +658,22 @@ export default function BendaharaShuPage() {
                     <td colSpan={2} className="border border-slate-300 px-2 py-2">Total Partisipasi</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
                     <td className="border border-slate-300 px-2 py-2 text-right">{Number(selectedMember?.partisipasi || 0).toLocaleString("id-ID")}</td>
-                    <td colSpan={3} className="border border-slate-200" />
+                    <td colSpan={2} className="border border-slate-200" />
                   </tr>
                   <tr>
                     <td className="border border-slate-200 bg-slate-100 px-2 py-3 text-center text-xs font-bold text-slate-500">21</td>
-                    <td colSpan={7} className="border border-slate-200" />
+                    <td colSpan={6} className="border border-slate-200" />
                   </tr>
                   <tr className="bg-blue-50 font-bold text-blue-950">
                     <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs text-slate-500">22</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">No.</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">Sisa Hasil Usaha Koperasi</td>
                     <td colSpan={2} className="border border-slate-300 px-2 py-2 text-center">Jumlah Sisa Hasil Usaha</td>
-                    <td className="border border-slate-300 px-2 py-2 text-center">Dasar Perhitungan</td>
-                    <td colSpan={2} className="border border-slate-300 px-2 py-2 text-center">Nilai</td>
+                    <td colSpan={2} className="border border-slate-300 px-2 py-2" />
                   </tr>
                   {[
-                    ["1", "Sisa Hasil Usaha Atas Jasa Modal", previewSelected.jasaModal, "Dana Jasa Modal", previewPools.jasaModal],
-                    ["2", "Sisa Hasil Usaha Atas Jasa Transaksi", previewSelected.jasaUsaha, "Dana Jasa Usaha", previewPools.jasaUsaha],
+                    ["1", "Sisa Hasil Usaha Atas Jasa Modal", previewSelected.jasaModal],
+                    ["2", "Sisa Hasil Usaha Atas Jasa Transaksi", previewSelected.jasaUsaha],
                   ].map((row, index) => (
                     <tr key={`shu-${row[0]}`}>
                       <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center text-xs font-bold text-slate-500">{23 + index}</td>
@@ -653,9 +681,7 @@ export default function BendaharaShuPage() {
                       <td className="border border-slate-300 px-2 py-2">{row[1]}</td>
                       <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
                       <td className="border border-slate-300 px-2 py-2 text-right">{Number(row[2]).toLocaleString("id-ID")}</td>
-                      <td className="border border-slate-300 px-2 py-2">{row[3]}</td>
-                      <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
-                      <td className="border border-slate-300 px-2 py-2 text-right">{Number(row[4]).toLocaleString("id-ID")}</td>
+                      <td colSpan={2} className="border border-slate-200 px-2 py-2" />
                     </tr>
                   ))}
                   <tr className="bg-slate-50 font-bold">
@@ -663,9 +689,7 @@ export default function BendaharaShuPage() {
                     <td colSpan={2} className="border border-slate-300 px-2 py-2">Total Sisa Hasil Usaha</td>
                     <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
                     <td className="border border-slate-300 px-2 py-2 text-right">{Number(previewSelected.totalShu).toLocaleString("id-ID")}</td>
-                    <td className="border border-slate-300 px-2 py-2">Total SHU</td>
-                    <td className="border border-slate-300 px-2 py-2 text-center">Rp</td>
-                    <td className="border border-slate-300 px-2 py-2 text-right">{Number(data?.totalShu || 0).toLocaleString("id-ID")}</td>
+                    <td colSpan={2} className="border border-slate-200 px-2 py-2" />
                   </tr>
                 </tbody>
               </table>

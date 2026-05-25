@@ -17,6 +17,8 @@ interface SettingItem {
   deskripsi: string | null;
 }
 
+const resetConfirmationText = "RESET DATA";
+
 export default function BendaharaPengaturanPage() {
   const router = useRouter();
   const [user, setUser] = useState<UserData | null>(null);
@@ -25,6 +27,10 @@ export default function BendaharaPengaturanPage() {
     "sistem",
   );
   const [loading, setLoading] = useState(true);
+  const [resetText, setResetText] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
   const [formData, setFormData] = useState({
     key_setting: "limit_transfer",
     value_setting: "5000000",
@@ -35,6 +41,7 @@ export default function BendaharaPengaturanPage() {
     const user = getCurrentUser();
     if (!user) return void router.push("/");
     if (user.role !== "bendahara" && user.role !== "admin") return void router.push("/dashboard");
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(user);
     fetch("/api/pengaturan")
       .then((res) => res.json())
@@ -45,15 +52,52 @@ export default function BendaharaPengaturanPage() {
       .finally(() => setLoading(false));
   }, [router]);
 
+  const loadSettings = async () => {
+    const response = await fetch("/api/pengaturan");
+    const data = await response.json();
+    if (data.success) setSettings(data.data);
+  };
+
   const handleSave = async () => {
     await fetch("/api/pengaturan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formData),
     });
-    const response = await fetch("/api/pengaturan");
-    const data = await response.json();
-    if (data.success) setSettings(data.data);
+    await loadSettings();
+  };
+
+  const handleResetDatabase = async () => {
+    if (!user || resetText !== resetConfirmationText) return;
+
+    setResetting(true);
+    setResetMessage("");
+    try {
+      const response = await fetch("/api/admin/reset-database", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: user.role,
+          username: user.username,
+          password: resetPassword,
+          confirmation: resetText,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Gagal reset database");
+      }
+
+      setResetText("");
+      setResetPassword("");
+      setResetMessage("Database berhasil direset. Data anggota, simpanan, pinjaman, jurnal, laporan, dan SHU sudah kosong.");
+      await loadSettings();
+    } catch (error) {
+      setResetMessage(String(error));
+    } finally {
+      setResetting(false);
+    }
   };
 
   if (!user)
@@ -90,41 +134,95 @@ export default function BendaharaPengaturanPage() {
             </div>
           </div>
           <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-bold text-slate-900">
-                Tambah / Ubah Pengaturan
-              </h2>
-              <div className="mt-4 space-y-4">
-                <input
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                  value={formData.key_setting}
-                  onChange={(e) =>
-                    setFormData({ ...formData, key_setting: e.target.value })
-                  }
-                  placeholder="Key setting"
-                />
-                <input
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                  value={formData.value_setting}
-                  onChange={(e) =>
-                    setFormData({ ...formData, value_setting: e.target.value })
-                  }
-                  placeholder="Value"
-                />
-                <textarea
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3"
-                  value={formData.deskripsi}
-                  onChange={(e) =>
-                    setFormData({ ...formData, deskripsi: e.target.value })
-                  }
-                  placeholder="Deskripsi"
-                />
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-bold text-slate-900">
+                  Tambah / Ubah Pengaturan
+                </h2>
+                <div className="mt-4 space-y-4">
+                  <input
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                    value={formData.key_setting}
+                    onChange={(e) =>
+                      setFormData({ ...formData, key_setting: e.target.value })
+                    }
+                    placeholder="Key setting"
+                  />
+                  <input
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                    value={formData.value_setting}
+                    onChange={(e) =>
+                      setFormData({ ...formData, value_setting: e.target.value })
+                    }
+                    placeholder="Value"
+                  />
+                  <textarea
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3"
+                    value={formData.deskripsi}
+                    onChange={(e) =>
+                      setFormData({ ...formData, deskripsi: e.target.value })
+                    }
+                    placeholder="Deskripsi"
+                  />
+                  <button
+                    onClick={handleSave}
+                    className="rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white"
+                  >
+                    Simpan Pengaturan
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-red-200 bg-white p-6 shadow-sm">
+                <p className="text-sm font-bold uppercase tracking-[0.18em] text-red-500">
+                  Zona Berbahaya
+                </p>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">
+                  Reset Semua Data
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Menghapus seluruh data anggota, simpanan, pinjaman, utang toko,
+                  jurnal, laporan keuangan, pengumuman, dan SHU. Akun login default
+                  serta daftar akun akuntansi dasar akan dibuat ulang.
+                </p>
+                <label className="mt-5 block text-sm font-semibold text-slate-700">
+                  <span className="mb-2 block">
+                    Ketik {resetConfirmationText} untuk membuka tombol reset
+                  </span>
+                  <input
+                    value={resetText}
+                    onChange={(event) => setResetText(event.target.value)}
+                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-slate-900 outline-none focus:border-red-500"
+                    placeholder={resetConfirmationText}
+                  />
+                </label>
+                <label className="mt-4 block text-sm font-semibold text-slate-700">
+                  <span className="mb-2 block">Password akun {user.username}</span>
+                  <input
+                    type="password"
+                    value={resetPassword}
+                    onChange={(event) => setResetPassword(event.target.value)}
+                    className="w-full rounded-xl border border-red-200 px-4 py-3 text-slate-900 outline-none focus:border-red-500"
+                    placeholder="Masukkan password untuk konfirmasi"
+                  />
+                </label>
                 <button
-                  onClick={handleSave}
-                  className="rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white"
+                  type="button"
+                  onClick={handleResetDatabase}
+                  disabled={
+                    resetting ||
+                    resetText !== resetConfirmationText ||
+                    resetPassword.length === 0
+                  }
+                  className="mt-4 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white hover:bg-red-700 disabled:bg-slate-300 disabled:text-slate-500"
                 >
-                  Simpan Pengaturan
+                  {resetting ? "Mereset Database..." : "Reset Database dari Nol"}
                 </button>
+                {resetMessage ? (
+                  <p className="mt-3 text-sm font-semibold text-slate-700">
+                    {resetMessage}
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">

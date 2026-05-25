@@ -1,4 +1,4 @@
-import type { PoolConnection } from "mysql2/promise";
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
 // ============================================================================
 // TYPES
@@ -43,6 +43,37 @@ type AccountBalanceRow = {
   nama_rekening: string;
   kategori: "aset" | "liabilitas" | "modal" | "pendapatan" | "beban";
   saldo: number | string | null;
+};
+
+type JournalReferenceFilter = {
+  tipeJurnal: JournalEntry["tipeJurnal"];
+  idReferensi: number;
+  deskripsiPrefix?: string;
+};
+
+type AffectedJournalRow = RowDataPacket & {
+  kode_rekening: string;
+  periode: string;
+};
+
+type RekeningTypeRow = RowDataPacket & {
+  tipe_normal: "debit" | "kredit";
+};
+
+type SaldoTotalRow = RowDataPacket & {
+  total_debit: number | string | null;
+  total_kredit: number | string | null;
+};
+
+type CountRow = RowDataPacket & {
+  count: number;
+};
+
+type TrialBalanceDbRow = RowDataPacket & {
+  kode_rekening: string;
+  nama_rekening: string;
+  saldoDebit: number | string | null;
+  saldoKredit: number | string | null;
 };
 
 // ============================================================================
@@ -150,24 +181,37 @@ export function loanJournal(
 
 export function installmentJournal(
   memberId: number,
-  amount: number,
+  principal: number,
+  interest = 0,
 ): JournalLine[] {
-  return [
+  const lines: JournalLine[] = [
     {
       account: "Kas",
-      amount,
+      amount: principal + interest,
       type: "debit",
       memberId,
       description: "Penerimaan angsuran pinjaman",
     },
     {
       account: "Piutang Pinjaman",
-      amount,
+      amount: principal,
       type: "kredit",
       memberId,
       description: "Pelunasan angsuran pinjaman",
     },
   ];
+
+  if (interest > 0) {
+    lines.push({
+      account: "Pendapatan Bunga",
+      amount: interest,
+      type: "kredit",
+      memberId,
+      description: "Pendapatan bunga angsuran",
+    });
+  }
+
+  return lines;
 }
 
 // ============================================================================
@@ -187,11 +231,11 @@ export async function generateNomorJurnal(
     .split("T")[0]
     .replace(/-/g, "");
 
-  const [rows] = await connection.query(
+  const [rows] = await connection.query<CountRow[]>(
     "SELECT COUNT(*) as count FROM jurnal_umum WHERE tanggal_jurnal = DATE(?)",
     [tanggal],
   );
-  const count = (rows as any)[0].count + 1;
+  const count = Number(rows[0]?.count || 0) + 1;
   const nomorUrut = String(count).padStart(3, "0");
 
   return `JU-${yyyymmdd}-${nomorUrut}`;
@@ -253,7 +297,7 @@ export async function postJournalEntry(
   );
 
   // Insert jurnal_umum header
-  const [result] = await connection.query(
+  const [result] = await connection.query<ResultSetHeader>(
     `INSERT INTO jurnal_umum 
     (nomor_jurnal, tanggal_jurnal, periode, deskripsi, tipe_jurnal, id_pengguna, id_referensi, total_debit, total_kredit, status_posting)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'posted')`,
@@ -270,7 +314,7 @@ export async function postJournalEntry(
     ],
   );
 
-  const jurnalId = (result as any).insertId;
+  const jurnalId = result.insertId;
 
   // Insert jurnal_detail lines
   for (const line of entry.lines) {
@@ -307,17 +351,17 @@ export async function updateSaldoRekening(
 
   for (const kodeRekening of rekeningSet) {
     // Get tipe_normal dari rekening
-    const [rekeningRow] = await connection.query(
+    const [rekeningRows] = await connection.query<RekeningTypeRow[]>(
       "SELECT tipe_normal FROM rekening WHERE kode_rekening = ?",
       [kodeRekening],
     );
 
-    if (!rekeningRow || (rekeningRow as any).length === 0) continue;
+    const tipeNormal = rekeningRows[0]?.tipe_normal;
 
-    const tipeNormal = (rekeningRow as any)[0].tipe_normal;
+    if (!tipeNormal) continue;
 
     // Calculate totals
-    const [saldoRow] = await connection.query(
+    const [saldoRows] = await connection.query<SaldoTotalRow[]>(
       `SELECT 
         SUM(CASE WHEN posisi = 'debit' THEN jumlah ELSE 0 END) as total_debit,
         SUM(CASE WHEN posisi = 'kredit' THEN jumlah ELSE 0 END) as total_kredit
@@ -327,8 +371,8 @@ export async function updateSaldoRekening(
       [kodeRekening, periode],
     );
 
-    const totalDebit = (saldoRow as any)[0].total_debit || 0;
-    const totalKredit = (saldoRow as any)[0].total_kredit || 0;
+    const totalDebit = Number(saldoRows[0]?.total_debit || 0);
+    const totalKredit = Number(saldoRows[0]?.total_kredit || 0);
 
     // Calculate ending balance
     let saldoAkhir = 0;
@@ -357,6 +401,89 @@ export async function updateSaldoRekening(
       ],
     );
   }
+}
+
+export async function recalculateSaldoRekening(
+  connection: PoolConnection,
+  kodeRekening: string,
+  periode: string,
+): Promise<void> {
+  const [rekeningRows] = await connection.query<RekeningTypeRow[]>(
+    "SELECT tipe_normal FROM rekening WHERE kode_rekening = ?",
+    [kodeRekening],
+  );
+
+  const tipeNormal = rekeningRows[0]?.tipe_normal;
+  if (!tipeNormal) return;
+
+  const [saldoRows] = await connection.query<SaldoTotalRow[]>(
+    `SELECT 
+      COALESCE(SUM(CASE WHEN posisi = 'debit' THEN jumlah ELSE 0 END), 0) as total_debit,
+      COALESCE(SUM(CASE WHEN posisi = 'kredit' THEN jumlah ELSE 0 END), 0) as total_kredit
+    FROM jurnal_detail jd
+    JOIN jurnal_umum ju ON jd.id_jurnal = ju.id
+    WHERE jd.kode_rekening = ? AND ju.periode = ? AND ju.status_posting = 'posted'`,
+    [kodeRekening, periode],
+  );
+
+  const totalDebit = Number(saldoRows[0]?.total_debit || 0);
+  const totalKredit = Number(saldoRows[0]?.total_kredit || 0);
+  const saldoAkhir =
+    tipeNormal === "kredit" ? totalKredit - totalDebit : totalDebit - totalKredit;
+
+  await connection.query(
+    `INSERT INTO saldo_rekening
+      (kode_rekening, periode, saldo_debit, saldo_kredit, saldo_akhir)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+      saldo_debit = ?, saldo_kredit = ?, saldo_akhir = ?`,
+    [
+      kodeRekening,
+      periode,
+      totalDebit,
+      totalKredit,
+      saldoAkhir,
+      totalDebit,
+      totalKredit,
+      saldoAkhir,
+    ],
+  );
+}
+
+export async function deleteJournalEntriesByReference(
+  connection: PoolConnection,
+  filter: JournalReferenceFilter,
+): Promise<void> {
+  const params: Array<string | number> = [filter.tipeJurnal, filter.idReferensi];
+  let condition = "ju.tipe_jurnal = ? AND ju.id_referensi = ?";
+
+  if (filter.deskripsiPrefix) {
+    condition += " AND ju.deskripsi LIKE ?";
+    params.push(`${filter.deskripsiPrefix}%`);
+  }
+
+  const [affectedRows] = await connection.query<AffectedJournalRow[]>(
+    `SELECT DISTINCT jd.kode_rekening, ju.periode
+     FROM jurnal_umum ju
+     JOIN jurnal_detail jd ON jd.id_jurnal = ju.id
+     WHERE ${condition}`,
+    params,
+  );
+
+  await connection.query(`DELETE ju FROM jurnal_umum ju WHERE ${condition}`, params);
+
+  for (const row of affectedRows) {
+    await recalculateSaldoRekening(connection, row.kode_rekening, row.periode);
+  }
+}
+
+export async function replaceJournalEntryByReference(
+  connection: PoolConnection,
+  filter: JournalReferenceFilter,
+  entry: JournalEntry,
+): Promise<number> {
+  await deleteJournalEntriesByReference(connection, filter);
+  return postJournalEntry(connection, entry);
 }
 
 /**
@@ -479,8 +606,8 @@ export function createInstallmentJournalEntry(
     {
       kodeRekening: "1-1100", // Kas
       posisi: "debit",
-      jumlah: principal,
-      keterangan: "Penerimaan Angsuran Pokok",
+      jumlah: principal + interest,
+      keterangan: "Penerimaan Angsuran Pinjaman",
       idAnggota: memberId,
     },
     {
@@ -493,22 +620,13 @@ export function createInstallmentJournalEntry(
   ];
 
   if (interest > 0) {
-    lines.push(
-      {
-        kodeRekening: "1-1100", // Kas
-        posisi: "debit",
-        jumlah: interest,
-        keterangan: "Penerimaan Bunga Angsuran",
-        idAnggota: memberId,
-      },
-      {
-        kodeRekening: "1-1400", // Piutang Bunga
-        posisi: "kredit",
-        jumlah: interest,
-        keterangan: "Pelunasan Bunga",
-        idAnggota: memberId,
-      },
-    );
+    lines.push({
+      kodeRekening: "4-1000", // Pendapatan Bunga
+      posisi: "kredit",
+      jumlah: interest,
+      keterangan: "Pendapatan Bunga Angsuran",
+      idAnggota: memberId,
+    });
   }
 
   return {
@@ -536,20 +654,26 @@ export async function getTrialBalance(
     saldoKredit: number;
   }>
 > {
-  const [rows] = await connection.query(
+  const [rows] = await connection.query<TrialBalanceDbRow[]>(
     `SELECT 
       r.kode_rekening,
       r.nama_rekening,
       COALESCE(s.saldo_debit, 0) as saldoDebit,
       COALESCE(s.saldo_kredit, 0) as saldoKredit
     FROM rekening r
-    LEFT JOIN saldo_rekening s ON r.kode_rekening = s.kode_rekening AND s.periode = ?
+    JOIN saldo_rekening s ON r.kode_rekening = s.kode_rekening AND s.periode = ?
     WHERE r.status = 'aktif'
+      AND (COALESCE(s.saldo_debit, 0) <> 0 OR COALESCE(s.saldo_kredit, 0) <> 0)
     ORDER BY r.kode_rekening`,
     [periode],
   );
 
-  return rows as any;
+  return rows.map((row) => ({
+    kodeRekening: row.kode_rekening,
+    namaRekening: row.nama_rekening,
+    saldoDebit: Number(row.saldoDebit || 0),
+    saldoKredit: Number(row.saldoKredit || 0),
+  }));
 }
 
 /**

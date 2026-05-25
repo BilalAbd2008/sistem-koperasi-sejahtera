@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Download, Printer } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Copy, Download, Eye, Printer, RefreshCw } from "lucide-react";
 
 interface IncomeItem {
   kodeRekening: string;
@@ -18,33 +18,91 @@ interface IncomeStatementData {
   periode: string;
 }
 
+const currentYear = () => new Date().getFullYear();
+
+const toDateInput = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const defaultStartDate = () => `${currentYear()}-01-01`;
+const defaultEndDate = () => `${currentYear()}-12-31`;
+
+const todayLabel = () =>
+  new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
+
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
-  }).format(value);
+  }).format(Number(value || 0));
+
+const formatAmount = (value: number, negative = false) => {
+  const amount = formatCurrency(Math.abs(value));
+  return negative && value !== 0 ? `(${amount})` : amount;
+};
+
+function ReportActionButton({
+  children,
+  variant = "light",
+  onClick,
+}: {
+  children: React.ReactNode;
+  variant?: "dark" | "yellow" | "light";
+  onClick: () => void;
+}) {
+  const className =
+    variant === "dark"
+      ? "bg-slate-900 text-white hover:bg-slate-800"
+      : variant === "yellow"
+        ? "bg-sky-600 text-white hover:bg-sky-700"
+        : "bg-slate-100 text-slate-800 hover:bg-slate-200";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-11 items-center gap-2 rounded-lg px-4 text-sm font-bold transition ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function LabaRugiReport() {
   const [data, setData] = useState<IncomeStatementData | null>(null);
-  const [year, setYear] = useState(String(new Date().getFullYear()));
+  const [startDate, setStartDate] = useState(defaultStartDate());
+  const [endDate, setEndDate] = useState(defaultEndDate());
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const fetchData = async () => {
     setLoading(true);
+    setError("");
     try {
       const params = new URLSearchParams({
-        periode_awal: `${year}-01-01`,
-        periode_akhir: `${year}-12-31`,
-        system: "old",
+        periode_awal: startDate,
+        periode_akhir: endDate,
+        system: "new",
       });
       const res = await fetch(`/api/laporan-keuangan/laba-rugi?${params}`);
       const result = await res.json();
-      const payload = result.data || {};
-      setData(payload.old || null);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-      alert("Error loading report: " + String(error));
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || "Gagal memuat laporan laba rugi");
+      }
+
+      setData(result.data?.new || null);
+    } catch (err) {
+      setError(String(err));
+      setData(null);
     } finally {
       setLoading(false);
     }
@@ -57,177 +115,243 @@ export default function LabaRugiReport() {
   }, []);
 
   const handlePrint = () => window.print();
-  const handleDownloadPDF = () => alert("Fitur download PDF akan diimplementasikan");
+  const handlePreview = () =>
+    document.getElementById("income-report-document")?.scrollIntoView({ behavior: "smooth" });
+  const handleDownloadPDF = () => window.print();
+  const handleCopyLink = async () => {
+    await navigator.clipboard?.writeText(window.location.href);
+  };
+  const reportPeriodLabel = `${new Date(startDate).toLocaleDateString("id-ID")} - ${new Date(
+    endDate,
+  ).toLocaleDateString("id-ID")}`;
 
-  if (!data) {
-    return (
-      <div className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm">
-        Memuat laporan...
-      </div>
-    );
-  }
+  const reportRows = useMemo(() => {
+    const revenues = data?.revenues || [];
+    const expenses = data?.expenses || [];
 
-  const profitMargin =
-    data.totalRevenues > 0
+    return {
+      revenues,
+      expenses,
+      hasRows: revenues.length > 0 || expenses.length > 0,
+    };
+  }, [data]);
+
+  const operatingProfit = (data?.totalRevenues || 0) - (data?.totalExpenses || 0);
+  const margin =
+    data && data.totalRevenues > 0
       ? ((data.netIncome / data.totalRevenues) * 100).toFixed(2)
       : "0.00";
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Laporan Laba Rugi</h1>
-          <p className="mt-1 text-sm text-slate-500">Tahun: {year}</p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handlePrint}
-            className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            <Printer size={20} />
+    <div className="space-y-5 text-slate-900">
+      <div className="flex flex-wrap items-center justify-end gap-2 lg:-mt-20 lg:mb-12">
+        <div className="flex flex-wrap items-center gap-2">
+          <ReportActionButton variant="dark" onClick={handlePreview}>
+            <Eye size={16} />
+            Preview
+          </ReportActionButton>
+          <ReportActionButton variant="yellow" onClick={handleDownloadPDF}>
+            <Download size={16} />
+            Download
+          </ReportActionButton>
+          <ReportActionButton onClick={handlePrint}>
+            <Printer size={16} />
             Cetak
-          </button>
+          </ReportActionButton>
           <button
-            onClick={handleDownloadPDF}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            type="button"
+            onClick={handleCopyLink}
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+            aria-label="Salin tautan laporan"
           >
-            <Download size={20} />
-            Download PDF
+            <Copy size={17} />
           </button>
         </div>
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-        <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">Tahun</label>
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <label className="text-sm font-semibold text-slate-700">
+          <span className="mb-1 block">Tanggal Awal</span>
           <input
-            type="number"
-            value={year}
-            onChange={(event) => setYear(event.target.value)}
-            placeholder="2026"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
+            type="date"
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value || toDateInput(new Date()))}
+            className="h-10 w-40 rounded-xl border border-slate-200 px-3 text-slate-900 outline-none focus:border-sky-600"
           />
-        </div>
-
+        </label>
+        <label className="text-sm font-semibold text-slate-700">
+          <span className="mb-1 block">Tanggal Akhir</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(event) => setEndDate(event.target.value || toDateInput(new Date()))}
+            className="h-10 w-40 rounded-xl border border-slate-200 px-3 text-slate-900 outline-none focus:border-sky-600"
+          />
+        </label>
         <button
+          type="button"
           onClick={fetchData}
           disabled={loading}
-          className="self-end rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-400"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800 disabled:bg-slate-400"
         >
+          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           {loading ? "Memuat..." : "Tampilkan"}
         </button>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.8fr)]">
-        <div className="space-y-6">
-          <section className="rounded-2xl border border-slate-200 p-5">
-            <h2 className="mb-4 border-b border-slate-200 pb-2 text-lg font-bold text-slate-900">
-              Pendapatan
-            </h2>
-            {data.revenues.length === 0 ? (
-              <p className="italic text-slate-500">Tidak ada pendapatan</p>
-            ) : (
-              <>
-                {data.revenues.map((item) => (
-                  <div
-                    key={item.kodeRekening}
-                    className="mb-2 flex justify-between gap-4 text-sm text-slate-700"
-                  >
-                    <span>
-                      {item.kodeRekening} - {item.namaRekening}
-                    </span>
-                    <span className="font-mono text-slate-900">
-                      {formatCurrency(item.amount)}
-                    </span>
-                  </div>
-                ))}
-                <div className="flex justify-between border-t border-slate-200 pt-3 text-lg font-bold">
-                  <span>Total Pendapatan</span>
-                  <span className="font-mono text-emerald-600">
-                    {formatCurrency(data.totalRevenues)}
-                  </span>
-                </div>
-              </>
-            )}
-          </section>
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      ) : null}
 
-          <section className="rounded-2xl border border-slate-200 p-5">
-            <h2 className="mb-4 border-b border-slate-200 pb-2 text-lg font-bold text-slate-900">
-              Beban Operasional
-            </h2>
-            {data.expenses.length === 0 ? (
-              <p className="italic text-slate-500">Tidak ada beban</p>
-            ) : (
-              <>
-                {data.expenses.map((item) => (
-                  <div
-                    key={item.kodeRekening}
-                    className="mb-2 flex justify-between gap-4 text-sm text-slate-700"
-                  >
-                    <span>
-                      {item.kodeRekening} - {item.namaRekening}
-                    </span>
-                    <span className="font-mono text-slate-900">
-                      {formatCurrency(item.amount)}
-                    </span>
-                  </div>
-                ))}
-                <div className="flex justify-between border-t border-slate-200 pt-3 text-lg font-bold">
-                  <span>Total Beban</span>
-                  <span className="font-mono text-red-600">
-                    {formatCurrency(data.totalExpenses)}
-                  </span>
-                </div>
-              </>
-            )}
-          </section>
+      <section
+        id="income-report-document"
+        className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+      >
+        <div className="bg-slate-900 px-6 py-8 text-center text-white">
+          <h3 className="text-lg font-extrabold">KOPERASI SEJAHTERA</h3>
+          <p className="mt-2 text-sm font-bold">Laporan Laba Rugi</p>
+          <p className="mt-1 text-xs text-slate-100">
+            Periode {reportPeriodLabel}
+          </p>
+          <p className="mt-1 text-xs text-slate-300">
+            Tanggal laporan: {todayLabel()}
+          </p>
+          <p className="mt-1 text-xs text-slate-300">
+            Disajikan dalam Rupiah, kecuali dinyatakan lain
+          </p>
         </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-            <p className="text-sm font-semibold text-emerald-700">Laba/Rugi Bersih</p>
-            <p
-              className={`mt-2 font-mono text-2xl font-bold ${
-                data.netIncome >= 0 ? "text-emerald-700" : "text-red-600"
-              }`}
-            >
-              {formatCurrency(data.netIncome)}
-            </p>
-          </div>
+        <div className="p-6">
+          <table className="w-full text-sm">
+            <tbody>
+              <tr>
+                <td className="py-3 font-bold text-slate-950">Pendapatan</td>
+                <td className="py-3 text-right font-mono" />
+              </tr>
+              {reportRows.revenues.length === 0 ? (
+                <tr className="border-b border-slate-100">
+                  <td className="py-3 pl-5 text-slate-500">Belum ada pendapatan</td>
+                  <td className="py-3 text-right font-mono text-slate-500">-</td>
+                </tr>
+              ) : (
+                reportRows.revenues.map((item) => (
+                  <tr key={item.kodeRekening} className="border-b border-slate-100">
+                    <td className="py-3 pl-5 text-slate-700">
+                      {item.namaRekening}
+                      <span className="ml-2 font-mono text-xs text-slate-400">
+                        {item.kodeRekening}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right font-mono">
+                      {formatCurrency(item.amount)}
+                    </td>
+                  </tr>
+                ))
+              )}
 
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-            <h3 className="mb-3 font-bold text-slate-900">Ringkasan Kinerja</h3>
-            <div className="grid gap-4 text-sm">
-              <div>
-                <p className="text-slate-500">Total Pendapatan</p>
-                <p className="font-bold text-emerald-600">
-                  {formatCurrency(data.totalRevenues)}
-                </p>
-              </div>
-              <div>
-                <p className="text-slate-500">Total Beban</p>
-                <p className="font-bold text-red-600">{formatCurrency(data.totalExpenses)}</p>
-              </div>
-              <div>
-                <p className="text-slate-500">Profit Margin</p>
-                <p className="font-bold text-slate-900">{profitMargin}%</p>
-              </div>
-              <div>
-                <p className="text-slate-500">Status</p>
-                <p className={`font-bold ${data.netIncome >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                  {data.netIncome >= 0 ? "UNTUNG" : "RUGI"}
-                </p>
-              </div>
+              <tr className="border-b border-slate-900">
+                <td className="py-3 font-bold">Total Pendapatan</td>
+                <td className="py-3 text-right font-mono font-bold">
+                  {formatCurrency(data?.totalRevenues || 0)}
+                </td>
+              </tr>
+
+              <tr>
+                <td className="pt-7 pb-3 font-bold text-slate-950">Beban Operasional</td>
+                <td className="pt-7 pb-3 text-right font-mono" />
+              </tr>
+              {reportRows.expenses.length === 0 ? (
+                <tr className="border-b border-slate-100">
+                  <td className="py-3 pl-5 text-slate-500">Belum ada beban</td>
+                  <td className="py-3 text-right font-mono text-slate-500">-</td>
+                </tr>
+              ) : (
+                reportRows.expenses.map((item) => (
+                  <tr key={item.kodeRekening} className="border-b border-slate-100">
+                    <td className="py-3 pl-5 text-slate-700">
+                      {item.namaRekening}
+                      <span className="ml-2 font-mono text-xs text-slate-400">
+                        {item.kodeRekening}
+                      </span>
+                    </td>
+                    <td className="py-3 text-right font-mono">
+                      {formatAmount(item.amount, true)}
+                    </td>
+                  </tr>
+                ))
+              )}
+              <tr className="border-b border-slate-300">
+                <td className="py-3 font-bold">Total Beban Operasional</td>
+                <td className="py-3 text-right font-mono font-bold">
+                  {formatAmount(data?.totalExpenses || 0, true)}
+                </td>
+              </tr>
+
+              <tr className="border-b border-slate-900">
+                <td className="py-4 font-bold">Laba Operasional</td>
+                <td className="py-4 text-right font-mono font-bold">
+                  {formatCurrency(operatingProfit)}
+                </td>
+              </tr>
+
+              <tr className="bg-sky-50">
+                <td className="rounded-l-lg px-4 py-4 font-extrabold text-slate-950">
+                  Laba Bersih Tahun Berjalan
+                </td>
+                <td className="rounded-r-lg px-4 py-4 text-right font-mono font-extrabold text-slate-950">
+                  {formatCurrency(data?.netIncome || 0)}
+                </td>
+              </tr>
+
+              {!loading && !reportRows.hasRows ? (
+                <tr>
+                  <td colSpan={2} className="py-8 text-center text-slate-500">
+                    Belum ada transaksi laba rugi untuk rentang tanggal ini.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+
+          <div className="mt-24 grid gap-6 md:grid-cols-2">
+            <div className="text-center">
+              <div className="border-t border-slate-900 pt-2 text-sm font-semibold">Ketua</div>
+              <p className="mt-1 text-xs text-slate-500">Koperasi Sejahtera</p>
+            </div>
+            <div className="text-center">
+              <div className="border-t border-slate-900 pt-2 text-sm font-semibold">Bendahara</div>
+              <p className="mt-1 text-xs text-slate-500">Koperasi Sejahtera</p>
             </div>
           </div>
-        </aside>
-      </div>
+        </div>
+      </section>
 
-      <div className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-slate-700">
-        <p>
-          <strong>Catatan:</strong> Laporan laba rugi mengikuti transaksi simpan pinjam
-          pada tahun {year}. Laba rugi dihitung dari 1 Januari sampai 31 Desember, sehingga perhitungan dimulai ulang setiap awal tahun.
-        </p>
+      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+          <p className="font-bold">Catatan Laporan</p>
+          <p className="mt-2">
+            Laporan ini merangkum pendapatan dan beban yang tercatat pada periode {reportPeriodLabel}.
+          </p>
+        </div>
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-slate-800">
+          <p className="font-bold">Ringkasan</p>
+          <div className="mt-2 grid gap-1">
+            <div className="flex justify-between gap-4">
+              <span>Total Pendapatan</span>
+              <span className="font-mono font-bold">{formatCurrency(data?.totalRevenues || 0)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Total Beban</span>
+              <span className="font-mono font-bold">{formatCurrency(data?.totalExpenses || 0)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span>Margin Laba</span>
+              <span className="font-mono font-bold">{margin}%</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import BendaharaSidebar from "@/components/BendaharaSidebar";
+import { exportToExcel } from "@/lib/export";
 
 interface UserData {
   nama_lengkap: string;
@@ -158,6 +159,79 @@ export default function BendaharaAnggotaPage() {
       (item.status_pekerjaan || "").toLowerCase().includes(q)
     );
   });
+  const buildExportRows = () =>
+    filtered.map((item, index) => ({
+      No: index + 1,
+      "No Anggota": item.no_anggota,
+      Nama: item.nama,
+      Email: item.email || "-",
+      "No HP": item.no_telepon || "-",
+      Alamat: item.alamat || "-",
+      Status: item.status_pekerjaan || "-",
+      Aktif: item.status,
+    }));
+
+  const handleExportExcel = () => {
+    exportToExcel(buildExportRows(), "Data Nasabah", `data_nasabah_${search || "semua"}.xlsx`);
+  };
+
+  const handleExportPDF = async () => {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const rows = buildExportRows();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 12;
+
+    doc.setFillColor(5, 150, 105);
+    doc.rect(0, 0, pageWidth, 24, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text("Laporan Data Nasabah", margin, 10);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Filter: ${search || "Semua"} | Total: ${rows.length}`, margin, 17);
+
+    const headers = ["No", "No Anggota", "Nama", "Email", "No HP", "Status"];
+    const widths = [12, 30, 50, 58, 38, 38];
+    let x = margin + 2;
+    let y = 38;
+
+    doc.setFillColor(241, 245, 249);
+    doc.rect(margin, y - 7, pageWidth - margin * 2, 10, "F");
+    doc.setTextColor(51, 65, 85);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    headers.forEach((header, index) => {
+      doc.text(header, x, y);
+      x += widths[index];
+    });
+
+    y += 9;
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(15, 23, 42);
+    rows.forEach((row) => {
+      if (y > 190) {
+        doc.addPage();
+        y = 18;
+      }
+      x = margin + 2;
+      [
+        String(row.No),
+        row["No Anggota"],
+        row.Nama,
+        row.Email,
+        row["No HP"],
+        row.Status,
+      ].forEach((value, index) => {
+        doc.text(String(value).slice(0, 32), x, y);
+        x += widths[index];
+      });
+      y += 8;
+    });
+
+    doc.save(`data_nasabah_${search || "semua"}.pdf`);
+  };
 
   return (
     <div className="min-h-screen overflow-y-auto bg-slate-100">
@@ -174,13 +248,29 @@ export default function BendaharaAnggotaPage() {
                   Data Nasabah Simpan Pinjam
                 </h1>
               </div>
-              <button
-                type="button"
-                onClick={handleTambahAnggota}
-                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
-                + Tambah Nasabah
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportPDF}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Export PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportExcel}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Export Excel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTambahAnggota}
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                >
+                  + Tambah Nasabah
+                </button>
+              </div>
             </div>
             <input
               value={search}

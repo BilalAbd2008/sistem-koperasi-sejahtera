@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS rekening (
   deskripsi TEXT,
   kategori ENUM('aset', 'liabilitas', 'modal', 'pendapatan', 'beban') NOT NULL,
   tipe_normal ENUM('debit', 'kredit') NOT NULL,
+  jenis_akun ENUM('parent', 'child') NOT NULL DEFAULT 'child',
+  parent_kode_rekening VARCHAR(20) NULL,
   status ENUM('aktif', 'nonaktif') DEFAULT 'aktif',
   tanggal_buat DATE NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

@@ -42,6 +42,7 @@ export default function BendaharaUtangTokoPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [memberQuery, setMemberQuery] = useState("");
   const [monthFilter, setMonthFilter] = useState("semua");
   const [yearFilter, setYearFilter] = useState("semua");
   const [statusFilter, setStatusFilter] = useState("semua");
@@ -89,6 +90,19 @@ export default function BendaharaUtangTokoPage() {
     () => new Set(filteredRows.map((item) => item.id_anggota)).size,
     [filteredRows],
   );
+  const filteredMemberOptions = useMemo(() => {
+    const query = memberQuery.toLowerCase();
+    return members.filter(
+      (member) =>
+        member.nama.toLowerCase().includes(query) ||
+        member.no_anggota.toLowerCase().includes(query),
+    );
+  }, [memberQuery, members]);
+
+  const chooseMember = (member: MemberItem) => {
+    setFormData({ ...formData, id_anggota: String(member.id) });
+    setMemberQuery(`${member.nama} - ${member.no_anggota}`);
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -138,6 +152,7 @@ export default function BendaharaUtangTokoPage() {
           bulan: formData.bulan,
           jumlah: "",
         });
+        setMemberQuery("");
         await loadData();
       }
     } finally {
@@ -261,21 +276,35 @@ export default function BendaharaUtangTokoPage() {
               <span className="mb-1 block text-sm font-semibold text-slate-700">
                 Nama Anggota
               </span>
-              <select
-                value={formData.id_anggota}
-                onChange={(event) =>
-                  setFormData({ ...formData, id_anggota: event.target.value })
-                }
+              <input
+                value={memberQuery}
+                onChange={(event) => {
+                  setMemberQuery(event.target.value);
+                  setFormData({ ...formData, id_anggota: "" });
+                }}
                 className="w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:border-emerald-500"
+                placeholder="Cari nama / no anggota..."
                 required
-              >
-                <option value="">Pilih anggota</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.nama} - {member.no_anggota}
-                  </option>
-                ))}
-              </select>
+              />
+              {memberQuery && !formData.id_anggota ? (
+                <div className="mt-2 max-h-44 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                  {filteredMemberOptions.slice(0, 8).map((member) => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => chooseMember(member)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm hover:bg-slate-50"
+                    >
+                      <span className="font-semibold text-slate-900">
+                        {member.nama}
+                      </span>
+                      <span className="text-xs font-bold text-slate-500">
+                        {member.no_anggota}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
             </label>
 
             <label className="block">

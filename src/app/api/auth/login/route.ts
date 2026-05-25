@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { RowDataPacket } from "mysql2";
 import pool from "@/lib/db";
+
+type LoginUserRow = RowDataPacket & {
+  id: number;
+  username: string;
+  password: string;
+  nama_lengkap: string;
+  email: string;
+  role: string;
+};
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, password } = await request.json();
+    const body = await request.json();
+    const username = String(body.username || "").trim();
+    const password = String(body.password || "");
 
     const connection = await pool.getConnection();
     const [users] = await connection.query(
-      'SELECT * FROM pengguna WHERE username = ? AND status = "aktif" AND role = "bendahara"',
-      [username],
+      'SELECT * FROM pengguna WHERE (username = ? OR email = ?) AND status = "aktif" AND role = "bendahara"',
+      [username, username],
     );
 
     if (Array.isArray(users) && users.length === 0) {
@@ -19,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = (users as any[])[0];
+    const user = (users as LoginUserRow[])[0];
 
     // In production, use bcrypt for password hashing
     if (user.password !== password) {

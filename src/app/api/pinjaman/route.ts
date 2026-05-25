@@ -4,12 +4,28 @@ import {
   addBalancedJournal, 
   loanJournal,
   postJournalEntry,
-  createLoanJournalEntry 
+  createLoanJournalEntry,
+  deleteJournalEntriesByReference,
+  replaceJournalEntryByReference,
 } from "@/lib/accounting";
 import { runLoanPaymentAutomation } from "@/lib/loanAutomation";
-import type { PoolConnection } from "mysql2/promise";
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
+
+type PinjamanJournalRow = RowDataPacket & {
+  id_anggota: number | string;
+  jumlah_pinjam: number | string;
+  jumlah_bunga: number | string | null;
+  tanggal_mulai: string | Date;
+};
 
 let loanMigrationPromise: Promise<void> | null = null;
+
+const toDateInput = (value: Date | string) => {
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toISOString().slice(0, 10);
+};
+
+const toPeriode = (value: Date | string) => toDateInput(value).slice(0, 7);
 
 async function ensureLoanScheduleColumns(connection: PoolConnection) {
   if (!loanMigrationPromise) {
@@ -80,7 +96,7 @@ export async function GET(request: NextRequest) {
           GROUP BY id_pinjaman
         ) payments ON payments.id_pinjaman = p.id
       `;
-      let params: any[] = [];
+      const params: unknown[] = [];
 
       if (id_anggota) {
         query += " WHERE p.id_anggota = ?";
@@ -132,7 +148,7 @@ export async function POST(request: NextRequest) {
     try {
       await connection.beginTransaction();
       
-      const [result] = await connection.query(
+      const [result] = await connection.query<ResultSetHeader>(
         `INSERT INTO pinjaman (id_anggota, jumlah_pinjam, jumlah_bunga, jangka_waktu, tanggal_pinjam, tanggal_mulai, tanggal_tagih, tanggal_jatuh_tempo) 
          VALUES (?, ?, ?, ?, NOW(), ?, ?, ?)`,
         [
@@ -145,7 +161,7 @@ export async function POST(request: NextRequest) {
           jatuh_tempo,
         ],
       );
-      const idPinjaman = (result as any).insertId;
+      const idPinjaman = result.insertId;
 
       // Legacy: Insert ke transaksi_lain untuk backward compatibility
       await addBalancedJournal(
@@ -158,24 +174,17 @@ export async function POST(request: NextRequest) {
       );
 
       // Modern: Create journal entry ke jurnal_umum system
-      const now = new Date();
-      const periode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const modernJournal = createLoanJournalEntry(
+        Number(id_anggota),
+        Number(jumlah_pinjam),
+        Number(jumlah_bunga || 0),
+        startDate,
+        toPeriode(startDate),
+        idPengguna || 1,
+        idPinjaman,
+      );
 
-      try {
-        const modernJournal = createLoanJournalEntry(
-          Number(id_anggota),
-          Number(jumlah_pinjam),
-          Number(jumlah_bunga || 0),
-          startDate,
-          periode,
-          idPengguna || 1,
-          idPinjaman,
-        );
-
-        await postJournalEntry(connection, modernJournal);
-      } catch (journalError) {
-        console.warn("Modern journal entry failed (non-blocking):", journalError);
-      }
+      await postJournalEntry(connection, modernJournal);
 
       await connection.commit();
     } catch (error) {
@@ -209,29 +218,70 @@ export async function PUT(request: NextRequest) {
       tanggal_mulai,
       tanggal_tagih,
       status,
+      idPengguna,
     } = await request.json();
 
     const connection = await pool.getConnection();
-    await ensureLoanScheduleColumns(connection);
-    const startDate = tanggal_mulai || new Date();
-    const jatuh_tempo = calculateDueDate(startDate, Number(jangka_waktu || 0));
-    const billingDay = Math.min(Math.max(Number(tanggal_tagih || 1), 1), 31);
+    try {
+      await ensureLoanScheduleColumns(connection);
+      await connection.beginTransaction();
+      const startDate = tanggal_mulai || new Date();
+      const jatuh_tempo = calculateDueDate(startDate, Number(jangka_waktu || 0));
+      const billingDay = Math.min(Math.max(Number(tanggal_tagih || 1), 1), 31);
 
-    await connection.query(
-      "UPDATE pinjaman SET id_anggota = ?, jumlah_pinjam = ?, jumlah_bunga = ?, jangka_waktu = ?, tanggal_mulai = ?, tanggal_tagih = ?, tanggal_jatuh_tempo = ?, status = ? WHERE id = ?",
-      [
-        id_anggota,
-        jumlah_pinjam,
-        jumlah_bunga,
-        jangka_waktu,
-        startDate,
-        billingDay,
-        jatuh_tempo,
-        status,
-        id,
-      ],
-    );
-    connection.release();
+      await connection.query(
+        "UPDATE pinjaman SET id_anggota = ?, jumlah_pinjam = ?, jumlah_bunga = ?, jangka_waktu = ?, tanggal_mulai = ?, tanggal_tagih = ?, tanggal_jatuh_tempo = ?, status = ? WHERE id = ?",
+        [
+          id_anggota,
+          jumlah_pinjam,
+          jumlah_bunga,
+          jangka_waktu,
+          startDate,
+          billingDay,
+          jatuh_tempo,
+          status,
+          id,
+        ],
+      );
+
+      const [rows] = await connection.query<PinjamanJournalRow[]>(
+        "SELECT id_anggota, jumlah_pinjam, jumlah_bunga, tanggal_mulai FROM pinjaman WHERE id = ? LIMIT 1",
+        [id],
+      );
+      const pinjaman = rows[0];
+      if (!pinjaman) {
+        await connection.rollback();
+        return NextResponse.json(
+          { success: false, error: "Pinjaman tidak ditemukan" },
+          { status: 404 },
+        );
+      }
+
+      await replaceJournalEntryByReference(
+        connection,
+        {
+          tipeJurnal: "pinjaman",
+          idReferensi: Number(id),
+          deskripsiPrefix: "Pencairan Pinjaman",
+        },
+        createLoanJournalEntry(
+          Number(pinjaman.id_anggota),
+          Number(pinjaman.jumlah_pinjam),
+          Number(pinjaman.jumlah_bunga || 0),
+          pinjaman.tanggal_mulai,
+          toPeriode(pinjaman.tanggal_mulai),
+          Number(idPengguna || 1),
+          Number(id),
+        ),
+      );
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return NextResponse.json({
       success: true,
@@ -251,8 +301,21 @@ export async function DELETE(request: NextRequest) {
     const { id } = await request.json();
 
     const connection = await pool.getConnection();
-    await connection.query("DELETE FROM pinjaman WHERE id = ?", [id]);
-    connection.release();
+    try {
+      await connection.beginTransaction();
+      await deleteJournalEntriesByReference(connection, {
+        tipeJurnal: "pinjaman",
+        idReferensi: Number(id),
+        deskripsiPrefix: "Pencairan Pinjaman",
+      });
+      await connection.query("DELETE FROM pinjaman WHERE id = ?", [id]);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return NextResponse.json({
       success: true,

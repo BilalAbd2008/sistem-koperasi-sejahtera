@@ -4,11 +4,27 @@ import {
   addBalancedJournal, 
   savingJournal,
   postJournalEntry,
-  createSavingJournalEntry 
+  createSavingJournalEntry,
+  deleteJournalEntriesByReference,
+  replaceJournalEntryByReference,
 } from "@/lib/accounting";
-import type { PoolConnection, ResultSetHeader } from "mysql2/promise";
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
+
+type SimpananJournalRow = RowDataPacket & {
+  id_anggota: number | string;
+  jenis_simpanan: "wajib" | "lebaran" | "pendidikan" | "sukarela";
+  jumlah: number | string;
+  tanggal_simpanan: string | Date;
+};
 
 let savingTypeMigrationPromise: Promise<void> | null = null;
+
+const toDateInput = (value: Date | string) => {
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toISOString().slice(0, 10);
+};
+
+const toPeriode = (value: Date | string) => toDateInput(value).slice(0, 7);
 
 async function ensureSavingTypes(connection: PoolConnection) {
   if (!savingTypeMigrationPromise) {
@@ -77,7 +93,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { id_anggota, jenis_simpanan, jumlah, status, idPengguna } = await request.json();
+    const {
+      id_anggota,
+      jenis_simpanan,
+      jumlah,
+      tanggal_simpanan,
+      status,
+      idPengguna,
+    } = await request.json();
+    const savingDate = tanggal_simpanan || new Date();
 
     const connection = await pool.getConnection();
     try {
@@ -86,8 +110,8 @@ export async function POST(request: NextRequest) {
 
       // Insert ke tabel simpanan
       const [result] = await connection.query<ResultSetHeader>(
-        "INSERT INTO simpanan (id_anggota, jenis_simpanan, jumlah, tanggal_simpanan, status) VALUES (?, ?, ?, NOW(), ?)",
-        [id_anggota, jenis_simpanan, jumlah, status || "aktif"],
+        "INSERT INTO simpanan (id_anggota, jenis_simpanan, jumlah, tanggal_simpanan, status) VALUES (?, ?, ?, ?, ?)",
+        [id_anggota, jenis_simpanan, jumlah, savingDate, status || "aktif"],
       );
       const idSimpanan = result.insertId;
 
@@ -99,25 +123,19 @@ export async function POST(request: NextRequest) {
 
       // Modern: Create journal entry ke jurnal_umum system
       // Get current period (YYYY-MM)
-      const now = new Date();
-      const periode = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const periode = toPeriode(savingDate);
 
-      try {
-        const modernJournal = createSavingJournalEntry(
-          Number(id_anggota),
-          jenis_simpanan as "wajib" | "lebaran" | "pendidikan" | "sukarela",
-          Number(jumlah),
-          now,
-          periode,
-          idPengguna || 1,
-          idSimpanan,
-        );
+      const modernJournal = createSavingJournalEntry(
+        Number(id_anggota),
+        jenis_simpanan as "wajib" | "lebaran" | "pendidikan" | "sukarela",
+        Number(jumlah),
+        savingDate,
+        periode,
+        idPengguna || 1,
+        idSimpanan,
+      );
 
-        await postJournalEntry(connection, modernJournal);
-      } catch (journalError) {
-        // Log journal error tapi jangan rollback transaksi simpanan
-        console.warn("Modern journal entry failed (non-blocking):", journalError);
-      }
+      await postJournalEntry(connection, modernJournal);
 
       await connection.commit();
     } catch (error) {
@@ -142,16 +160,77 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, id_anggota, jenis_simpanan, jumlah, status } =
-      await request.json();
+    const {
+      id,
+      id_anggota,
+      jenis_simpanan,
+      jumlah,
+      tanggal_simpanan,
+      status,
+      idPengguna,
+    } = await request.json();
 
     const connection = await pool.getConnection();
-    await ensureSavingTypes(connection);
-    await connection.query(
-      "UPDATE simpanan SET id_anggota = ?, jenis_simpanan = ?, jumlah = ?, status = ? WHERE id = ?",
-      [id_anggota, jenis_simpanan, jumlah, status, id],
-    );
-    connection.release();
+    try {
+      await ensureSavingTypes(connection);
+      await connection.beginTransaction();
+
+      const updateValues: Array<string | number> = [
+        id_anggota,
+        jenis_simpanan,
+        jumlah,
+      ];
+      let updateQuery =
+        "UPDATE simpanan SET id_anggota = ?, jenis_simpanan = ?, jumlah = ?";
+
+      if (tanggal_simpanan) {
+        updateQuery += ", tanggal_simpanan = ?";
+        updateValues.push(tanggal_simpanan);
+      }
+
+      updateQuery += ", status = ? WHERE id = ?";
+      updateValues.push(status, id);
+
+      await connection.query(updateQuery, updateValues);
+
+      const [rows] = await connection.query<SimpananJournalRow[]>(
+        "SELECT id_anggota, jenis_simpanan, jumlah, tanggal_simpanan FROM simpanan WHERE id = ? LIMIT 1",
+        [id],
+      );
+      const simpanan = rows[0];
+      if (!simpanan) {
+        await connection.rollback();
+        return NextResponse.json(
+          { success: false, error: "Simpanan tidak ditemukan" },
+          { status: 404 },
+        );
+      }
+
+      await replaceJournalEntryByReference(
+        connection,
+        {
+          tipeJurnal: "simpanan",
+          idReferensi: Number(id),
+          deskripsiPrefix: "Setoran Simpanan",
+        },
+        createSavingJournalEntry(
+          Number(simpanan.id_anggota),
+          simpanan.jenis_simpanan,
+          Number(simpanan.jumlah),
+          simpanan.tanggal_simpanan,
+          toPeriode(simpanan.tanggal_simpanan),
+          Number(idPengguna || 1),
+          Number(id),
+        ),
+      );
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return NextResponse.json({
       success: true,
@@ -171,8 +250,21 @@ export async function DELETE(request: NextRequest) {
     const { id } = await request.json();
 
     const connection = await pool.getConnection();
-    await connection.query("DELETE FROM simpanan WHERE id = ?", [id]);
-    connection.release();
+    try {
+      await connection.beginTransaction();
+      await deleteJournalEntriesByReference(connection, {
+        tipeJurnal: "simpanan",
+        idReferensi: Number(id),
+        deskripsiPrefix: "Setoran Simpanan",
+      });
+      await connection.query("DELETE FROM simpanan WHERE id = ?", [id]);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return NextResponse.json({
       success: true,
