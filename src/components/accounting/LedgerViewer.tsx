@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
+import { Download, FileSpreadsheet } from 'lucide-react';
+import { exportToExcel } from '@/lib/export';
 
 interface LedgerEntry {
   id: number;
@@ -186,6 +188,104 @@ export default function LedgerViewer() {
       ? totalKredit - totalDebit
       : totalDebit - totalKredit;
 
+  const buildExportRows = () => [
+    ...entries.map((entry) => ({
+      Tanggal: new Date(entry.tanggal_jurnal || entry.tanggal_transaksi || '').toLocaleDateString(
+        'id-ID',
+      ),
+      'Nomor Referensi': entry.nomor_jurnal || entry.id,
+      'Kode Rekening': entry.kode_rekening || entry.akun || '',
+      'Nama Rekening': entry.nama_rekening || '',
+      Keterangan: entry.keterangan || '',
+      Anggota: entry.nama_anggota || '',
+      Debit: toNumber(entry.debit),
+      Kredit: toNumber(entry.kredit),
+      Saldo: toNumber(entry.saldo),
+    })),
+    {
+      Tanggal: '',
+      'Nomor Referensi': '',
+      'Kode Rekening': 'TOTAL',
+      'Nama Rekening': selectedAccountName,
+      Keterangan: '',
+      Anggota: '',
+      Debit: totalDebit,
+      Kredit: totalKredit,
+      Saldo: finalBalance,
+    },
+  ];
+
+  const exportFileName = `buku_besar_${selectedAccount || 'semua'}_${startDate}_${endDate}`;
+
+  const handleDownloadExcel = () => {
+    exportToExcel(buildExportRows(), 'Buku Besar', `${exportFileName}.xlsx`);
+  };
+
+  const handleDownloadPDF = async () => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const margin = 10;
+    let y = 16;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('KOPERASI SEJAHTERA', margin, y);
+    y += 7;
+    doc.setFontSize(11);
+    doc.text(`Buku Besar - ${selectedAccountName}`, margin, y);
+    y += 6;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text(`Periode ${startDate} sampai ${endDate}`, margin, y);
+    y += 8;
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Tanggal', margin, y);
+    doc.text('Referensi', margin + 24, y);
+    doc.text('Rekening', margin + 55, y);
+    doc.text('Keterangan', margin + 105, y);
+    doc.text('Debit', 205, y, { align: 'right' });
+    doc.text('Kredit', 242, y, { align: 'right' });
+    doc.text('Saldo', 282, y, { align: 'right' });
+    y += 4;
+    doc.line(margin, y, 287, y);
+    y += 5;
+
+    doc.setFont('helvetica', 'normal');
+    entries.forEach((entry) => {
+      if (y > 190) {
+        doc.addPage();
+        y = 16;
+      }
+      doc.text(
+        new Date(entry.tanggal_jurnal || entry.tanggal_transaksi || '').toLocaleDateString('id-ID'),
+        margin,
+        y,
+      );
+      doc.text(String(entry.nomor_jurnal || entry.id).slice(0, 16), margin + 24, y);
+      doc.text(`${entry.kode_rekening || ''} ${entry.nama_rekening || ''}`.slice(0, 34), margin + 55, y);
+      doc.text(String(entry.keterangan || '').slice(0, 48), margin + 105, y);
+      doc.text(toNumber(entry.debit) > 0 ? formatCurrency(entry.debit) : '-', 205, y, {
+        align: 'right',
+      });
+      doc.text(toNumber(entry.kredit) > 0 ? formatCurrency(entry.kredit) : '-', 242, y, {
+        align: 'right',
+      });
+      doc.text(formatCurrency(entry.saldo), 282, y, { align: 'right' });
+      y += 7;
+    });
+
+    y += 2;
+    doc.line(margin, y, 287, y);
+    y += 7;
+    doc.setFont('helvetica', 'bold');
+    doc.text('TOTAL', margin, y);
+    doc.text(formatCurrency(totalDebit), 205, y, { align: 'right' });
+    doc.text(formatCurrency(totalKredit), 242, y, { align: 'right' });
+    doc.text(formatCurrency(finalBalance), 282, y, { align: 'right' });
+    doc.save(`${exportFileName}.pdf`);
+  };
+
   const openEdit = (entry: LedgerEntry) => {
     const debit = toNumber(entry.debit);
     const kredit = toNumber(entry.kredit);
@@ -258,7 +358,27 @@ export default function LedgerViewer() {
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="mb-6 text-xl font-bold text-slate-900">Buku Besar (Ledger)</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-bold text-slate-900">Buku Besar (Ledger)</h1>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-700"
+          >
+            <Download size={16} />
+            PDF
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadExcel}
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-200"
+          >
+            <FileSpreadsheet size={16} />
+            Excel
+          </button>
+        </div>
+      </div>
 
       {/* Filter */}
       <div className="mb-6 grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(220px,1.2fr)_minmax(160px,0.8fr)_minmax(160px,0.8fr)_minmax(120px,0.6fr)]">

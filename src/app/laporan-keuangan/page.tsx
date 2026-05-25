@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Download, FileSpreadsheet } from 'lucide-react';
 import Sidebar from '@/components/Sidebar';
+import { exportToExcel } from '@/lib/export';
 
 interface Laporan {
   id: number;
@@ -15,9 +17,15 @@ interface Laporan {
   total_laba_rugi: number;
 }
 
+interface UserData {
+  nama_lengkap?: string;
+  username?: string;
+  role?: string;
+}
+
 export default function LaporanKeuanganPage() {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserData | null>(null);
   const [laporan, setLaporan] = useState<Laporan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -30,16 +38,6 @@ export default function LaporanKeuanganPage() {
     total_biaya: '',
     keterangan: '',
   });
-
-  useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (!userData) {
-      router.push('/');
-      return;
-    }
-    setUser(JSON.parse(userData));
-    fetchLaporan();
-  }, []);
 
   const fetchLaporan = async () => {
     try {
@@ -54,6 +52,17 @@ export default function LaporanKeuanganPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const userData = localStorage.getItem('user');
+    if (!userData) {
+      router.push('/');
+      return;
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUser(JSON.parse(userData));
+    void fetchLaporan();
+  }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,6 +104,74 @@ export default function LaporanKeuanganPage() {
     router.push('/');
   };
 
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('id-ID', {
+      style: 'currency',
+      currency: 'IDR',
+      minimumFractionDigits: 0,
+    }).format(Number(value || 0));
+
+  const buildExportRows = () =>
+    laporan.map((item) => ({
+      'Periode Awal': new Date(item.periode_awal).toLocaleDateString('id-ID'),
+      'Periode Akhir': new Date(item.periode_akhir).toLocaleDateString('id-ID'),
+      'Total Simpanan': Number(item.total_simpanan || 0),
+      'Total Pinjaman': Number(item.total_pinjaman || 0),
+      Bunga: Number(item.total_bunga_pinjaman || 0),
+      Biaya: Number(item.total_biaya || 0),
+      'Laba/Rugi': Number(item.total_laba_rugi || 0),
+    }));
+
+  const handleDownloadExcel = () => {
+    exportToExcel(buildExportRows(), 'Laporan Keuangan', 'laporan_keuangan.xlsx');
+  };
+
+  const handleDownloadPDF = async () => {
+    const { jsPDF } = await import('jspdf');
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const margin = 12;
+    let y = 16;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text('KOPERASI SEJAHTERA', margin, y);
+    y += 7;
+    doc.setFontSize(11);
+    doc.text('Laporan Keuangan', margin, y);
+    y += 10;
+
+    doc.setFontSize(8);
+    doc.text('Periode', margin, y);
+    doc.text('Simpanan', 105, y, { align: 'right' });
+    doc.text('Pinjaman', 145, y, { align: 'right' });
+    doc.text('Bunga', 185, y, { align: 'right' });
+    doc.text('Biaya', 225, y, { align: 'right' });
+    doc.text('Laba/Rugi', 275, y, { align: 'right' });
+    y += 4;
+    doc.line(margin, y, 285, y);
+    y += 6;
+
+    doc.setFont('helvetica', 'normal');
+    laporan.forEach((item) => {
+      if (y > 190) {
+        doc.addPage();
+        y = 16;
+      }
+      const period = `${new Date(item.periode_awal).toLocaleDateString('id-ID')} - ${new Date(
+        item.periode_akhir,
+      ).toLocaleDateString('id-ID')}`;
+      doc.text(period, margin, y);
+      doc.text(formatCurrency(item.total_simpanan), 105, y, { align: 'right' });
+      doc.text(formatCurrency(item.total_pinjaman), 145, y, { align: 'right' });
+      doc.text(formatCurrency(item.total_bunga_pinjaman), 185, y, { align: 'right' });
+      doc.text(formatCurrency(item.total_biaya), 225, y, { align: 'right' });
+      doc.text(formatCurrency(item.total_laba_rugi), 275, y, { align: 'right' });
+      y += 7;
+    });
+
+    doc.save('laporan_keuangan.pdf');
+  };
+
   if (!user) return <div>Loading...</div>;
 
   return (
@@ -105,12 +182,30 @@ export default function LaporanKeuanganPage() {
         <div className="bg-white shadow-sm p-6 border-b border-gray-200">
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gray-900">Laporan Keuangan</h1>
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700"
-            >
-              {showForm ? 'Batal' : '+ Buat Laporan'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadPDF}
+                className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 font-semibold text-white hover:bg-sky-700"
+              >
+                <Download size={16} />
+                PDF
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadExcel}
+                className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 font-semibold text-gray-800 hover:bg-gray-200"
+              >
+                <FileSpreadsheet size={16} />
+                Excel
+              </button>
+              <button
+                onClick={() => setShowForm(!showForm)}
+                className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700"
+              >
+                {showForm ? 'Batal' : '+ Buat Laporan'}
+              </button>
+            </div>
           </div>
         </div>
 

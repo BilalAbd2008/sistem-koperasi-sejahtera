@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Download, Eye, Printer, RefreshCw } from "lucide-react";
+import { Copy, Download, Eye, FileSpreadsheet, Printer, RefreshCw } from "lucide-react";
+import { exportToExcel } from "@/lib/export";
 
 interface BalanceSheetItem {
   kodeRekening: string;
@@ -129,7 +130,6 @@ export default function NeraceReport() {
   const handlePrint = () => window.print();
   const handlePreview = () =>
     document.getElementById("balance-report-document")?.scrollIntoView({ behavior: "smooth" });
-  const handleDownloadPDF = () => window.print();
   const handleCopyLink = async () => {
     await navigator.clipboard?.writeText(window.location.href);
   };
@@ -137,6 +137,90 @@ export default function NeraceReport() {
   const totalLiabilitiesEquity = (data?.totalLiabilities || 0) + (data?.totalEquity || 0);
   const difference = Math.abs((data?.totalAssets || 0) - totalLiabilitiesEquity);
   const isBalanced = difference < 0.01;
+
+  const exportRows = () => {
+    const assets = data?.assets || [];
+    const liabilities = data?.liabilities || [];
+    const equity = data?.equity || [];
+
+    return [
+      ...assets.map((item) => ({
+        Bagian: "Aset",
+        "Kode Akun": item.kodeRekening,
+        "Nama Akun": item.namaRekening,
+        Saldo: Number(item.saldo || 0),
+      })),
+      { Bagian: "Aset", "Kode Akun": "TOTAL", "Nama Akun": "Total Aset", Saldo: data?.totalAssets || 0 },
+      ...liabilities.map((item) => ({
+        Bagian: "Liabilitas",
+        "Kode Akun": item.kodeRekening,
+        "Nama Akun": item.namaRekening,
+        Saldo: Number(item.saldo || 0),
+      })),
+      {
+        Bagian: "Liabilitas",
+        "Kode Akun": "TOTAL",
+        "Nama Akun": "Total Liabilitas",
+        Saldo: data?.totalLiabilities || 0,
+      },
+      ...equity.map((item) => ({
+        Bagian: "Ekuitas",
+        "Kode Akun": item.kodeRekening,
+        "Nama Akun": item.namaRekening,
+        Saldo: Number(item.saldo || 0),
+      })),
+      { Bagian: "Ekuitas", "Kode Akun": "TOTAL", "Nama Akun": "Total Ekuitas", Saldo: data?.totalEquity || 0 },
+      {
+        Bagian: "Total",
+        "Kode Akun": "TOTAL",
+        "Nama Akun": "Total Liabilitas & Ekuitas",
+        Saldo: totalLiabilitiesEquity,
+      },
+    ];
+  };
+
+  const handleDownloadExcel = () => {
+    exportToExcel(exportRows(), "Neraca", `neraca_${year}.xlsx`);
+  };
+
+  const handleDownloadPDF = async () => {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const margin = 12;
+    let y = 16;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("KOPERASI SEJAHTERA", margin, y);
+    y += 7;
+    doc.setFontSize(11);
+    doc.text(`Laporan Posisi Keuangan - Per 31 Desember ${year}`, margin, y);
+    y += 10;
+
+    doc.setFontSize(8);
+    doc.text("Bagian", margin, y);
+    doc.text("Kode", margin + 38, y);
+    doc.text("Nama Akun", margin + 68, y);
+    doc.text("Saldo", 275, y, { align: "right" });
+    y += 4;
+    doc.line(margin, y, 285, y);
+    y += 5;
+
+    doc.setFont("helvetica", "normal");
+    exportRows().forEach((row) => {
+      if (y > 190) {
+        doc.addPage();
+        y = 16;
+      }
+      doc.text(String(row.Bagian), margin, y);
+      doc.text(String(row["Kode Akun"]), margin + 38, y);
+      doc.text(String(row["Nama Akun"]).slice(0, 80), margin + 68, y);
+      doc.text(formatCurrency(Number(row.Saldo || 0)), 275, y, { align: "right" });
+      y += 7;
+    });
+
+    doc.save(`neraca_${year}.pdf`);
+  };
 
   const rows = useMemo<BalanceRow[]>(() => {
     const assets = data?.assets || [];
@@ -187,7 +271,11 @@ export default function NeraceReport() {
           </ReportActionButton>
           <ReportActionButton variant="yellow" onClick={handleDownloadPDF}>
             <Download size={16} />
-            Download
+            PDF
+          </ReportActionButton>
+          <ReportActionButton onClick={handleDownloadExcel}>
+            <FileSpreadsheet size={16} />
+            Excel
           </ReportActionButton>
           <ReportActionButton onClick={handlePrint}>
             <Printer size={16} />

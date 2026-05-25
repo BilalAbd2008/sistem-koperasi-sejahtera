@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Download, Eye, Printer, RefreshCw } from "lucide-react";
+import { Copy, Download, Eye, FileSpreadsheet, Printer, RefreshCw } from "lucide-react";
+import { exportToExcel } from "@/lib/export";
 
 interface IncomeItem {
   kodeRekening: string;
@@ -117,7 +118,6 @@ export default function LabaRugiReport() {
   const handlePrint = () => window.print();
   const handlePreview = () =>
     document.getElementById("income-report-document")?.scrollIntoView({ behavior: "smooth" });
-  const handleDownloadPDF = () => window.print();
   const handleCopyLink = async () => {
     await navigator.clipboard?.writeText(window.location.href);
   };
@@ -142,6 +142,85 @@ export default function LabaRugiReport() {
       ? ((data.netIncome / data.totalRevenues) * 100).toFixed(2)
       : "0.00";
 
+  const exportRows = () => [
+    ...(data?.revenues || []).map((item) => ({
+      Bagian: "Pendapatan",
+      "Kode Akun": item.kodeRekening,
+      "Nama Akun": item.namaRekening,
+      Jumlah: Number(item.amount || 0),
+    })),
+    {
+      Bagian: "Pendapatan",
+      "Kode Akun": "TOTAL",
+      "Nama Akun": "Total Pendapatan",
+      Jumlah: data?.totalRevenues || 0,
+    },
+    ...(data?.expenses || []).map((item) => ({
+      Bagian: "Beban Operasional",
+      "Kode Akun": item.kodeRekening,
+      "Nama Akun": item.namaRekening,
+      Jumlah: Number(item.amount || 0),
+    })),
+    {
+      Bagian: "Beban Operasional",
+      "Kode Akun": "TOTAL",
+      "Nama Akun": "Total Beban Operasional",
+      Jumlah: data?.totalExpenses || 0,
+    },
+    {
+      Bagian: "Laba Rugi",
+      "Kode Akun": "TOTAL",
+      "Nama Akun": "Laba Bersih Tahun Berjalan",
+      Jumlah: data?.netIncome || 0,
+    },
+  ];
+
+  const handleDownloadExcel = () => {
+    exportToExcel(exportRows(), "Laba Rugi", `laba_rugi_${startDate}_${endDate}.xlsx`);
+  };
+
+  const handleDownloadPDF = async () => {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const marginX = 14;
+    let y = 18;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("KOPERASI SEJAHTERA", marginX, y);
+    y += 7;
+    doc.setFontSize(11);
+    doc.text(`Laporan Laba Rugi - ${reportPeriodLabel}`, marginX, y);
+    y += 10;
+
+    const writeRow = (label: string, amount: number, bold = false, indent = 0) => {
+      if (y > 275) {
+        doc.addPage();
+        y = 18;
+      }
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      doc.setFontSize(9);
+      doc.text(label.slice(0, 92), marginX + indent, y);
+      doc.text(formatCurrency(amount), 196, y, { align: "right" });
+      y += 7;
+    };
+
+    writeRow("Pendapatan", 0, true);
+    (data?.revenues || []).forEach((item) =>
+      writeRow(`${item.namaRekening} (${item.kodeRekening})`, Number(item.amount || 0), false, 5),
+    );
+    writeRow("Total Pendapatan", data?.totalRevenues || 0, true);
+    y += 4;
+    writeRow("Beban Operasional", 0, true);
+    (data?.expenses || []).forEach((item) =>
+      writeRow(`${item.namaRekening} (${item.kodeRekening})`, Number(item.amount || 0), false, 5),
+    );
+    writeRow("Total Beban Operasional", data?.totalExpenses || 0, true);
+    writeRow("Laba Bersih Tahun Berjalan", data?.netIncome || 0, true);
+
+    doc.save(`laba_rugi_${startDate}_${endDate}.pdf`);
+  };
+
   return (
     <div className="space-y-5 text-slate-900">
       <div className="flex flex-wrap items-center justify-end gap-2 lg:-mt-20 lg:mb-12">
@@ -152,7 +231,11 @@ export default function LabaRugiReport() {
           </ReportActionButton>
           <ReportActionButton variant="yellow" onClick={handleDownloadPDF}>
             <Download size={16} />
-            Download
+            PDF
+          </ReportActionButton>
+          <ReportActionButton onClick={handleDownloadExcel}>
+            <FileSpreadsheet size={16} />
+            Excel
           </ReportActionButton>
           <ReportActionButton onClick={handlePrint}>
             <Printer size={16} />

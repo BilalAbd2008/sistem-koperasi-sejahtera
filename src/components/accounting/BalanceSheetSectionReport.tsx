@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { Download, FileSpreadsheet, Printer, RefreshCw } from "lucide-react";
+import { exportToExcel } from "@/lib/export";
 
 type SectionMode = "assets" | "liabilities";
 
@@ -82,6 +83,64 @@ export default function BalanceSheetSectionReport({ mode }: { mode: SectionMode 
     mode === "assets"
       ? "Daftar posisi aset koperasi per periode"
       : "Daftar posisi kewajiban anggota dan ekuitas koperasi";
+  const filePrefix = mode === "assets" ? "bs_aset" : "bs_liabilitas_ekuitas";
+  const sheetName = mode === "assets" ? "BS Aset" : "BS Liabilitas Ekuitas";
+
+  const exportRows = () => [
+    ...rows.map((item) => ({
+      "Kode Akun": item.kodeRekening,
+      "Nama Rekening": item.namaRekening,
+      Saldo: Number(item.saldo || 0),
+    })),
+    { "Kode Akun": "TOTAL", "Nama Rekening": `Total ${mode === "assets" ? "Aset" : "Liabilitas + Ekuitas"}`, Saldo: total },
+  ];
+
+  const handleDownloadExcel = () => {
+    exportToExcel(exportRows(), sheetName, `${filePrefix}_${year}.xlsx`);
+  };
+
+  const handleDownloadPDF = async () => {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const marginX = 14;
+    let y = 18;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("KOPERASI SEJAHTERA", marginX, y);
+    y += 7;
+    doc.setFontSize(11);
+    doc.text(`${title} - Per 31 Desember ${year}`, marginX, y);
+    y += 10;
+
+    doc.setFontSize(9);
+    doc.text("Kode", marginX, y);
+    doc.text("Nama Rekening", marginX + 32, y);
+    doc.text("Saldo", 196, y, { align: "right" });
+    y += 4;
+    doc.line(marginX, y, 196, y);
+    y += 6;
+
+    doc.setFont("helvetica", "normal");
+    rows.forEach((item) => {
+      if (y > 275) {
+        doc.addPage();
+        y = 18;
+      }
+      doc.text(item.kodeRekening, marginX, y);
+      doc.text(item.namaRekening.slice(0, 70), marginX + 32, y);
+      doc.text(formatCurrency(Number(item.saldo || 0)), 196, y, { align: "right" });
+      y += 7;
+    });
+
+    y += 2;
+    doc.line(marginX, y, 196, y);
+    y += 7;
+    doc.setFont("helvetica", "bold");
+    doc.text("Total", marginX, y);
+    doc.text(formatCurrency(total), 196, y, { align: "right" });
+    doc.save(`${filePrefix}_${year}.pdf`);
+  };
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -90,7 +149,7 @@ export default function BalanceSheetSectionReport({ mode }: { mode: SectionMode 
           <h2 className="text-xl font-bold text-slate-900">{title}</h2>
           <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
         </div>
-        <div className="flex items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm text-slate-700">
             <span className="mb-1 block text-xs font-semibold">Tahun</span>
             <input
@@ -109,6 +168,30 @@ export default function BalanceSheetSectionReport({ mode }: { mode: SectionMode 
           >
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
             Muat
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadPDF}
+            className="flex h-10 items-center gap-2 rounded-xl bg-sky-600 px-4 text-sm font-semibold text-white transition hover:bg-sky-700"
+          >
+            <Download size={16} />
+            PDF
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadExcel}
+            className="flex h-10 items-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-200"
+          >
+            <FileSpreadsheet size={16} />
+            Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="flex h-10 items-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-200"
+          >
+            <Printer size={16} />
+            Cetak
           </button>
         </div>
       </div>
