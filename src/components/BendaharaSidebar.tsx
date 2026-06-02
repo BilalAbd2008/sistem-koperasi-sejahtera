@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { logout } from "@/lib/auth";
@@ -194,17 +195,15 @@ export default function BendaharaSidebar({ user }: BendaharaSidebarProps) {
     <>
       <aside className="fixed inset-y-0 left-0 z-40 flex h-dvh w-72 flex-col overflow-hidden bg-slate-950 text-white shadow-2xl shadow-slate-950/40">
         <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-5 py-4">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-400">
-            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor">
-              <path d="M12 2 4 6v4c0 5.5 3.3 10 8 12 4.7-2 8-6.5 8-12V6l-8-4Zm0 4.1 5 2.5v2.3c0 3.7-2.1 7-5 8.7-2.9-1.7-5-5-5-8.7V8.6l5-2.5Z" />
-            </svg>
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5">
+            <Image src="/koperasi-logo.svg" alt="Logo Koperasi" width={34} height={34} className="h-full w-full object-contain" />
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-400">
               Koperasi
             </p>
             <p className="text-sm font-semibold text-white/90">
-              Sejahtera Bersama
+              PRI BDAPK Cinagara
             </p>
           </div>
         </div>

@@ -294,7 +294,7 @@ export default function BendaharaSimpananPage() {
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(15);
-      doc.text("Koperasi Sejahtera Bersama", margin, 10);
+      doc.text("Koperasi PRI BDAPK Cinagara", margin, 10);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.text("Laporan Simpanan Nasabah", margin, 17);

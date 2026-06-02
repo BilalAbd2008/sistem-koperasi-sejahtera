@@ -174,7 +174,7 @@ export default function LedgerViewer() {
   }, [selectedAccount, startDate, endDate]);
 
   const selectedAccountName =
-    rekening.find((r) => r.kode_rekening === selectedAccount)?.nama_rekening || 'Semua rekening';
+    rekening.find((r) => r.kode_rekening === selectedAccount)?.nama_rekening || 'Semua akun';
   const isChildAccount = (item: Rekening) =>
     item.jenis_akun === 'child' || (!!item.parent_kode_rekening && item.jenis_akun !== 'parent');
   const accountOptionLabel = (item: Rekening) =>
@@ -194,8 +194,8 @@ export default function LedgerViewer() {
         'id-ID',
       ),
       'Nomor Referensi': entry.nomor_jurnal || entry.id,
-      'Kode Rekening': entry.kode_rekening || entry.akun || '',
-      'Nama Rekening': entry.nama_rekening || '',
+      'Kode Akun': entry.kode_rekening || entry.akun || '',
+      'Nama Akun': entry.nama_rekening || '',
       Keterangan: entry.keterangan || '',
       Anggota: entry.nama_anggota || '',
       Debit: toNumber(entry.debit),
@@ -205,8 +205,8 @@ export default function LedgerViewer() {
     {
       Tanggal: '',
       'Nomor Referensi': '',
-      'Kode Rekening': 'TOTAL',
-      'Nama Rekening': selectedAccountName,
+      'Kode Akun': 'TOTAL',
+      'Nama Akun': selectedAccountName,
       Keterangan: '',
       Anggota: '',
       Debit: totalDebit,
@@ -229,7 +229,7 @@ export default function LedgerViewer() {
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.text('KOPERASI SEJAHTERA', margin, y);
+    doc.text('KOPERASI PRI BDAPK CINAGARA', margin, y);
     y += 7;
     doc.setFontSize(11);
     doc.text(`Buku Besar - ${selectedAccountName}`, margin, y);
@@ -242,7 +242,7 @@ export default function LedgerViewer() {
     doc.setFont('helvetica', 'bold');
     doc.text('Tanggal', margin, y);
     doc.text('Referensi', margin + 24, y);
-    doc.text('Rekening', margin + 55, y);
+    doc.text('Akun', margin + 55, y);
     doc.text('Keterangan', margin + 105, y);
     doc.text('Debit', 205, y, { align: 'right' });
     doc.text('Kredit', 242, y, { align: 'right' });
@@ -383,7 +383,7 @@ export default function LedgerViewer() {
       {/* Filter */}
       <div className="mb-6 grid gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-[minmax(220px,1.2fr)_minmax(160px,0.8fr)_minmax(160px,0.8fr)_minmax(120px,0.6fr)]">
         <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">Rekening</label>
+          <label className="mb-1 block text-sm font-semibold text-slate-700">Akun</label>
           <select
             value={selectedAccount}
             onChange={(e) => setSelectedAccount(e.target.value)}
@@ -391,7 +391,7 @@ export default function LedgerViewer() {
             onMouseDown={() => void fetchRekening()}
             className="w-full rounded-xl border border-slate-200 px-3 py-2 text-slate-900"
           >
-            <option value="">Semua rekening</option>
+            <option value="">Semua akun</option>
             {rekening.map((r) => (
               <option key={r.kode_rekening} value={r.kode_rekening}>
                 {accountOptionLabel(r)}
@@ -441,7 +441,7 @@ export default function LedgerViewer() {
           {selectedAccount ? (
             <>
               {' '}
-              | Kode: <span className="font-mono">{selectedAccount}</span>
+              | Kode akun: <span className="font-mono">{selectedAccount}</span>
             </>
           ) : null}
         </p>
@@ -454,7 +454,7 @@ export default function LedgerViewer() {
             <tr className="bg-slate-50 text-slate-500">
               <th className="px-4 py-3 text-left">Tanggal</th>
               <th className="px-4 py-3 text-left">Nomor Referensi</th>
-              <th className="px-4 py-3 text-left">Rekening</th>
+              <th className="px-4 py-3 text-left">Akun</th>
               <th className="px-4 py-3 text-left">Keterangan</th>
               <th className="px-4 py-3 text-left">Anggota</th>
               <th className="px-4 py-3 text-right">Debit</th>

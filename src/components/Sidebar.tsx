@@ -20,8 +20,8 @@ export default function Sidebar({ user, onLogout }: SidebarProps) {
       <div className="p-4 flex items-center justify-between">
         {isOpen && (
           <div>
-            <h2 className="text-xl font-bold">REPA</h2>
-            <p className="text-xs text-gray-400">Koperasi</p>
+            <h2 className="text-xl font-bold">PRI BDAPK</h2>
+            <p className="text-xs text-gray-400">Koperasi Cinagara</p>
           </div>
         )}
         <button

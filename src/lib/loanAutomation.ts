@@ -1,10 +1,4 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import {
-  addBalancedJournal,
-  createInstallmentJournalEntry,
-  installmentJournal,
-  postJournalEntry,
-} from "@/lib/accounting";
 
 interface LoanRow extends RowDataPacket {
   id: number;
@@ -38,11 +32,6 @@ const daysInMonth = (year: number, monthIndex: number) =>
 const makeDueDate = (year: number, monthIndex: number, dueDay: number) =>
   new Date(year, monthIndex, Math.min(Math.max(dueDay, 1), daysInMonth(year, monthIndex)));
 
-const calculateInstallmentInterest = (totalInterest: number | null, tenor: number) => {
-  const tenorValue = Math.max(Number(tenor || 0), 1);
-  return Math.round((Number(totalInterest || 0) / tenorValue) * 100) / 100;
-};
-
 const getFirstDueDate = (startValue: string | Date, dueDay: number) => {
   const startDate = toLocalDate(startValue);
   const sameMonthDue = makeDueDate(startDate.getFullYear(), startDate.getMonth(), dueDay);
@@ -52,7 +41,36 @@ const getFirstDueDate = (startValue: string | Date, dueDay: number) => {
   return sameMonthDue;
 };
 
+export async function ensureLoanPaymentApprovalColumns(connection: PoolConnection) {
+  const [columns] = await connection.query<RowDataPacket[]>(
+    "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'pembayaran_pinjaman' AND COLUMN_NAME IN ('status_approval', 'tanggal_disetujui', 'id_approver')",
+  );
+  const existing = new Set(columns.map((column) => String(column.COLUMN_NAME)));
+
+  if (!existing.has("status_approval")) {
+    await connection.query(
+      "ALTER TABLE pembayaran_pinjaman ADD COLUMN status_approval ENUM('pending', 'approved', 'failed') NOT NULL DEFAULT 'approved' AFTER keterangan",
+    );
+  }
+
+  if (!existing.has("tanggal_disetujui")) {
+    await connection.query(
+      "ALTER TABLE pembayaran_pinjaman ADD COLUMN tanggal_disetujui DATETIME NULL AFTER status_approval",
+    );
+  }
+
+  if (!existing.has("id_approver")) {
+    await connection.query(
+      "ALTER TABLE pembayaran_pinjaman ADD COLUMN id_approver INT NULL AFTER tanggal_disetujui",
+    );
+  }
+}
+
+export const approvedPaymentCondition = "(pp.status_approval IS NULL OR pp.status_approval = 'approved')";
+
 export async function runLoanPaymentAutomation(connection: PoolConnection) {
+  await ensureLoanPaymentApprovalColumns(connection);
+
   const today = new Date();
   const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
 
@@ -70,6 +88,7 @@ export async function runLoanPaymentAutomation(connection: PoolConnection) {
     LEFT JOIN (
       SELECT id_pinjaman, SUM(jumlah_bayar) AS total_bayar_pokok
       FROM pembayaran_pinjaman
+      WHERE status_approval = 'approved'
       GROUP BY id_pinjaman
     ) payments ON payments.id_pinjaman = p.id
     WHERE p.status = 'aktif'
@@ -78,7 +97,7 @@ export async function runLoanPaymentAutomation(connection: PoolConnection) {
   for (const loan of loans) {
     const principal = Number(loan.jumlah_pinjam || 0);
     const tenor = Number(loan.jangka_waktu || 1);
-    let remaining = Math.max(principal - Number(loan.total_bayar_pokok || 0), 0);
+    const remaining = Math.max(principal - Number(loan.total_bayar_pokok || 0), 0);
     if (remaining <= 0) continue;
 
     const monthlyPrincipal = Math.ceil(principal / tenor);
@@ -95,41 +114,18 @@ export async function runLoanPaymentAutomation(connection: PoolConnection) {
       const dueDateText = formatDate(dueDate);
       const marker = `AUTO-PINJAMAN-${loan.id}-${dueDateText}`;
       const [existingRows] = await connection.query<RowDataPacket[]>(
-        "SELECT id FROM pembayaran_pinjaman WHERE id_pinjaman = ? AND (tanggal_bayar = ? OR keterangan = ?) LIMIT 1",
-        [loan.id, dueDateText, marker],
+        "SELECT id FROM pembayaran_pinjaman WHERE id_pinjaman = ? AND (tanggal_bayar = ? OR keterangan LIKE ?) LIMIT 1",
+        [loan.id, dueDateText, `%${marker}%`],
       );
       if (existingRows.length > 0) continue;
 
       const amount = Math.min(monthlyPrincipal, remaining);
-      const interest = calculateInstallmentInterest(loan.jumlah_bunga, tenor);
-      const [result] = await connection.query<ResultSetHeader>(
-        "INSERT INTO pembayaran_pinjaman (id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan) VALUES (?, ?, ?, ?)",
-        [loan.id, amount, dueDateText, marker],
+      await connection.query<ResultSetHeader>(
+        `INSERT INTO pembayaran_pinjaman
+          (id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan, status_approval)
+         VALUES (?, ?, ?, ?, 'pending')`,
+        [loan.id, amount, dueDateText, `${marker} - menunggu approval`],
       );
-      const paymentId = Number(result.insertId);
-
-      await addBalancedJournal(
-        connection,
-        installmentJournal(Number(loan.id_anggota), amount, interest).map((line) => ({
-          ...line,
-          date: dueDateText,
-          description: `${line.description} otomatis`,
-        })),
-      );
-      await postJournalEntry(
-        connection,
-        createInstallmentJournalEntry(
-          Number(loan.id_anggota),
-          amount,
-          interest,
-          dueDateText,
-          dueDateText.slice(0, 7),
-          1,
-          paymentId,
-        ),
-      );
-
-      remaining -= amount;
     }
 
     if (remaining <= 0) {

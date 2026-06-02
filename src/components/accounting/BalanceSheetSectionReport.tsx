@@ -107,7 +107,7 @@ export default function BalanceSheetSectionReport({ mode }: { mode: SectionMode 
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("KOPERASI SEJAHTERA", marginX, y);
+    doc.text("KOPERASI PRI BDAPK CINAGARA", marginX, y);
     y += 7;
     doc.setFontSize(11);
     doc.text(`${title} - Per 31 Desember ${year}`, marginX, y);

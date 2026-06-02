@@ -134,7 +134,7 @@ export default function LaporanKeuanganPage() {
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.text('KOPERASI SEJAHTERA', margin, y);
+    doc.text('KOPERASI PRI BDAPK CINAGARA', margin, y);
     y += 7;
     doc.setFontSize(11);
     doc.text('Laporan Keuangan', margin, y);

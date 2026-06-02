@@ -187,7 +187,7 @@ export default function LabaRugiReport() {
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("KOPERASI SEJAHTERA", marginX, y);
+    doc.text("KOPERASI PRI BDAPK CINAGARA", marginX, y);
     y += 7;
     doc.setFontSize(11);
     doc.text(`Laporan Laba Rugi - ${reportPeriodLabel}`, marginX, y);
@@ -293,7 +293,7 @@ export default function LabaRugiReport() {
         className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
       >
         <div className="bg-slate-900 px-6 py-8 text-center text-white">
-          <h3 className="text-lg font-extrabold">KOPERASI SEJAHTERA</h3>
+          <h3 className="text-lg font-extrabold">KOPERASI PRI BDAPK CINAGARA</h3>
           <p className="mt-2 text-sm font-bold">Laporan Laba Rugi</p>
           <p className="mt-1 text-xs text-slate-100">
             Periode {reportPeriodLabel}
@@ -401,11 +401,11 @@ export default function LabaRugiReport() {
           <div className="mt-24 grid gap-6 md:grid-cols-2">
             <div className="text-center">
               <div className="border-t border-slate-900 pt-2 text-sm font-semibold">Ketua</div>
-              <p className="mt-1 text-xs text-slate-500">Koperasi Sejahtera</p>
+              <p className="mt-1 text-xs text-slate-500">Koperasi PRI BDAPK Cinagara</p>
             </div>
             <div className="text-center">
               <div className="border-t border-slate-900 pt-2 text-sm font-semibold">Bendahara</div>
-              <p className="mt-1 text-xs text-slate-500">Koperasi Sejahtera</p>
+              <p className="mt-1 text-xs text-slate-500">Koperasi PRI BDAPK Cinagara</p>
             </div>
           </div>
         </div>

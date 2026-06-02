@@ -53,6 +53,9 @@ CREATE TABLE IF NOT EXISTS pembayaran_pinjaman (
   jumlah_bayar DECIMAL(12, 2) NOT NULL,
   tanggal_bayar DATE NOT NULL,
   keterangan VARCHAR(255),
+  status_approval ENUM('pending', 'approved', 'failed') NOT NULL DEFAULT 'approved',
+  tanggal_disetujui DATETIME NULL,
+  id_approver INT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (id_pinjaman) REFERENCES pinjaman(id) ON DELETE CASCADE
 );

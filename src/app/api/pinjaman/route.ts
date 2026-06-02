@@ -93,6 +93,7 @@ export async function GET(request: NextRequest) {
         LEFT JOIN (
           SELECT id_pinjaman, SUM(jumlah_bayar) AS total_bayar_pokok
           FROM pembayaran_pinjaman
+          WHERE status_approval IS NULL OR status_approval = 'approved'
           GROUP BY id_pinjaman
         ) payments ON payments.id_pinjaman = p.id
       `;

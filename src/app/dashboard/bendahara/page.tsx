@@ -246,7 +246,7 @@ export default function BendaharaDashboardPage() {
                     Dashboard Bendahara
                   </p>
                   <h1 className="mt-1 text-2xl font-bold text-slate-900">
-                    Selamat Datang di Koperasi Digital Smartcoop Indonesia
+                    Selamat Datang di Koperasi PRI BDAPK Cinagara
                   </h1>
                   <p className="mt-2 text-sm text-slate-500">
                     Hai, <span className="font-semibold text-slate-800">{user.nama_lengkap || "Bendahara Koperasi"}</span>

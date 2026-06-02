@@ -126,7 +126,7 @@ export default function TrialBalanceReport() {
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("KOPERASI SEJAHTERA", margin, y);
+    doc.text("KOPERASI PRI BDAPK CINAGARA", margin, y);
     y += 7;
     doc.setFontSize(11);
     doc.text(`Neraca Saldo - Per 31 Desember ${year}`, margin, y);
@@ -252,7 +252,7 @@ export default function TrialBalanceReport() {
         className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
       >
         <div className="bg-slate-900 px-6 py-8 text-center text-white">
-          <h3 className="text-lg font-extrabold">KOPERASI SEJAHTERA</h3>
+          <h3 className="text-lg font-extrabold">KOPERASI PRI BDAPK CINAGARA</h3>
           <p className="mt-2 text-sm font-bold">Neraca Saldo</p>
           <p className="mt-1 text-xs text-slate-100">Per 31 Desember {year}</p>
           <p className="mt-1 text-xs text-slate-300">Tanggal laporan: {todayLabel()}</p>

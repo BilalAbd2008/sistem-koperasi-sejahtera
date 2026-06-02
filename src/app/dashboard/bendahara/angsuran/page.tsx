@@ -24,6 +24,7 @@ interface AngsuranItem {
   jumlah_bayar: number;
   tanggal_bayar: string;
   keterangan: string | null;
+  status_approval?: "pending" | "approved" | "failed";
 }
 
 interface AnggotaItem {
@@ -52,6 +53,20 @@ const formatMoney = (value: number) => `Rp ${Number(value || 0).toLocaleString("
 const makeLocalDate = (value: string) => {
   const [year, month, day] = value.slice(0, 10).split("-").map(Number);
   return new Date(year, month - 1, day);
+};
+
+const formatLocalDate = (value: string) => makeLocalDate(value).toLocaleDateString("id-ID");
+
+const statusStyles: Record<string, string> = {
+  pending: "bg-amber-50 text-amber-700 ring-amber-200",
+  approved: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  failed: "bg-red-50 text-red-700 ring-red-200",
+};
+
+const statusLabels: Record<string, string> = {
+  pending: "Menunggu approval",
+  approved: "Disetujui",
+  failed: "Gagal",
 };
 
 export default function BendaharaAngsuranPage() {
@@ -130,18 +145,39 @@ export default function BendaharaAngsuranPage() {
 
   const buildExportRows = () =>
     filteredRows.map((item) => ({
-      Tanggal: new Date(item.tanggal_bayar).toLocaleDateString("id-ID"),
+      Tanggal: formatLocalDate(item.tanggal_bayar),
       Nasabah: item.nama || anggotaMap[item.id_anggota] || "-",
       "No Anggota": item.no_anggota || "-",
       Pinjaman: `P-${item.id_pinjaman}`,
       "Bayar Pokok": Number(item.jumlah_bayar || 0),
       "Sisa Pokok": Number(item.sisa_pinjaman || 0),
       "Tanggal Tagih": item.tanggal_tagih || "-",
+      Status: statusLabels[item.status_approval || "approved"],
       Keterangan: item.keterangan || "Angsuran pinjaman",
     }));
 
   const handleExportExcel = () => {
     exportToExcel(buildExportRows(), "Angsuran", "laporan-angsuran.xlsx");
+  };
+
+  const handleApproval = async (item: AngsuranItem, status: "approved" | "failed") => {
+    const label = status === "approved" ? "setujui" : "tandai gagal dan jadwalkan bulan berikutnya";
+    if (!window.confirm(`Yakin ${label} angsuran P-${item.id_pinjaman}?`)) return;
+
+    const response = await fetch("/api/pembayaran-pinjaman", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: item.id, status_approval: status }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) {
+      alert(result.error || "Gagal memproses approval angsuran");
+      return;
+    }
+
+    const refreshed = await fetch("/api/pembayaran-pinjaman");
+    const data = await refreshed.json();
+    if (data.success) setAngsuran(data.data);
   };
 
   const handleExportPDF = async () => {
@@ -169,8 +205,8 @@ export default function BendaharaAngsuranPage() {
     );
     doc.text(`Total pembayaran pokok: ${formatMoney(totalPembayaran)}`, 14, 50);
 
-    const headers = ["Tanggal", "Nasabah", "No Anggota", "Pinjaman", "Bayar Pokok", "Sisa Pokok", "Tagih", "Keterangan"];
-    const widths = [25, 42, 32, 22, 35, 35, 18, 58];
+    const headers = ["Tanggal", "Nasabah", "No Anggota", "Pinjaman", "Bayar Pokok", "Sisa Pokok", "Tagih", "Status", "Keterangan"];
+    const widths = [23, 38, 28, 20, 32, 32, 16, 32, 48];
     let y = 62;
 
     doc.setFillColor(241, 245, 249);
@@ -197,6 +233,7 @@ export default function BendaharaAngsuranPage() {
         formatMoney(row["Bayar Pokok"]),
         formatMoney(row["Sisa Pokok"]),
         String(row["Tanggal Tagih"]),
+        row.Status,
         row.Keterangan,
       ].forEach((value, index) => {
         doc.text(String(value).slice(0, 32), x, y);
@@ -208,7 +245,9 @@ export default function BendaharaAngsuranPage() {
     doc.save("laporan-angsuran.pdf");
   };
 
-  const totalPembayaran = filteredRows.reduce(
+  const approvedRows = filteredRows.filter((item) => (item.status_approval || "approved") === "approved");
+
+  const totalPembayaran = approvedRows.reduce(
     (sum, item) => sum + Number(item.jumlah_bayar || 0),
     0,
   );
@@ -318,7 +357,7 @@ export default function BendaharaAngsuranPage() {
             <div className="border-b border-slate-100 px-6 py-4">
               <h2 className="text-lg font-bold text-slate-900">Riwayat Pembayaran Pokok</h2>
               <p className="text-sm text-slate-500">
-                Pembayaran di sini mengurangi sisa pokok. Bunga tidak ikut mengurangi sisa pokok.
+                Pembayaran otomatis perlu approval dulu sebelum mengurangi sisa pokok.
               </p>
             </div>
             <div className="overflow-auto">
@@ -330,14 +369,16 @@ export default function BendaharaAngsuranPage() {
                     <th className="px-6 py-4">Pinjaman</th>
                     <th className="px-6 py-4">Bayar Pokok</th>
                     <th className="px-6 py-4">Sisa Pokok</th>
+                    <th className="px-6 py-4">Status</th>
                     <th className="px-6 py-4">Keterangan</th>
+                    <th className="px-6 py-4 text-right">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(loading ? [] : filteredRows.slice(0, 20)).map((item) => (
                     <tr key={item.id} className="border-t border-slate-100">
                       <td className="whitespace-nowrap px-6 py-4 text-slate-700">
-                        {new Date(item.tanggal_bayar).toLocaleDateString("id-ID")}
+                        {formatLocalDate(item.tanggal_bayar)}
                       </td>
                       <td className="px-6 py-4 text-slate-700">
                         {item.nama || anggotaMap[item.id_anggota] || "-"}
@@ -349,7 +390,38 @@ export default function BendaharaAngsuranPage() {
                       <td className="whitespace-nowrap px-6 py-4 font-semibold text-emerald-700">
                         {formatMoney(Number(item.sisa_pinjaman ?? 0))}
                       </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
+                            statusStyles[item.status_approval || "approved"]
+                          }`}
+                        >
+                          {statusLabels[item.status_approval || "approved"]}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 text-slate-700">{item.keterangan || "Angsuran pinjaman"}</td>
+                      <td className="whitespace-nowrap px-6 py-4 text-right">
+                        {item.status_approval === "pending" ? (
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleApproval(item, "approved")}
+                              className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                            >
+                              Setujui
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleApproval(item, "failed")}
+                              className="rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+                            >
+                              Gagal
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-slate-400">-</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

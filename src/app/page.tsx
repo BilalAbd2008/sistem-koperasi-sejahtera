@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 
 function LoginForm() {
@@ -62,23 +63,12 @@ function LoginForm() {
     <main className="min-h-screen overflow-y-auto bg-[#f5f7fb] px-4 py-4 font-(family-name:--font-geist-sans) md:px-8 md:py-6">
       <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-center rounded-3xl border border-slate-200 bg-white/80 p-4 shadow-[0_25px_60px_-35px_rgba(15,23,42,0.35)] backdrop-blur md:gap-14 md:p-8 lg:p-10">
         <section className="hidden w-full max-w-xl md:block md:text-left">
-          <div className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-3xl bg-emerald-50 text-emerald-600 shadow-inner shadow-emerald-100">
-            <svg
-              viewBox="0 0 24 24"
-              className="h-14 w-14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-            >
-              <path d="M4.5 10.3V5.8L12 2l7.5 3.8v4.5c0 5.9-3.6 9.9-7.5 11.7-3.9-1.8-7.5-5.8-7.5-11.7Z" />
-              <path d="M7.8 11.5c0-1.5 1.2-2.7 2.7-2.7s2.7 1.2 2.7 2.7-1.2 2.7-2.7 2.7-2.7-1.2-2.7-2.7Z" />
-              <path d="M12.2 8.8c.5-1.1 1.5-1.8 2.7-1.8 1.7 0 3 1.3 3 3v1.5" />
-              <path d="M5.2 11.5V10c0-1.7 1.3-3 3-3" />
-            </svg>
+          <div className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-3xl bg-white p-3 shadow-inner shadow-emerald-100">
+            <Image src="/koperasi-logo.svg" alt="Logo Koperasi" width={72} height={72} className="h-full w-full object-contain" priority />
           </div>
 
           <h1 className="text-3xl font-bold leading-tight text-slate-800 md:text-4xl">
-            KOPERASI SEJAHTERA BERSAMA
+            Koperasi PRI BDAPK Cinagara
           </h1>
           <p className="mt-2 text-xl font-semibold text-slate-700">
             Sistem Informasi Koperasi

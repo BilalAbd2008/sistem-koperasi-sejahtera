@@ -9,6 +9,7 @@ import {
   replaceJournalEntryByReference,
 } from "@/lib/accounting";
 import { runLoanPaymentAutomation } from "@/lib/loanAutomation";
+import { ensureLoanPaymentApprovalColumns } from "@/lib/loanAutomation";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
 let loanMigrationPromise: Promise<void> | null = null;
@@ -20,11 +21,15 @@ type LoanPaymentLookupRow = RowDataPacket & {
 };
 
 type PaymentJournalRow = RowDataPacket & {
+  id: number | string;
+  id_pinjaman: number | string;
   id_anggota: number | string | null;
   jumlah_bunga: number | string | null;
   jangka_waktu: number | string | null;
   jumlah_bayar: number | string;
   tanggal_bayar: string | Date;
+  keterangan: string | null;
+  status_approval?: "pending" | "approved" | "failed";
 };
 
 type PaymentWithoutJournalRow = PaymentJournalRow & {
@@ -37,6 +42,12 @@ const toDateInput = (value: Date | string) => {
 };
 
 const toPeriode = (value: Date | string) => toDateInput(value).slice(0, 7);
+
+const addOneMonth = (value: Date | string) => {
+  const date = value instanceof Date ? value : new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  const next = new Date(date.getFullYear(), date.getMonth() + 1, date.getDate());
+  return toDateInput(next);
+};
 
 const calculateInstallmentInterest = (
   totalInterest: number | string | null,
@@ -81,7 +92,14 @@ async function ensureLoanScheduleColumns(connection: PoolConnection) {
   await loanMigrationPromise;
 }
 
+async function ensureLoanPaymentInfrastructure(connection: PoolConnection) {
+  await ensureLoanScheduleColumns(connection);
+  await ensureLoanPaymentApprovalColumns(connection);
+}
+
 async function backfillMissingPaymentJournals(connection: PoolConnection) {
+  await ensureLoanPaymentApprovalColumns(connection);
+
   const [rows] = await connection.query<PaymentWithoutJournalRow[]>(
     `SELECT
       pp.id,
@@ -97,6 +115,7 @@ async function backfillMissingPaymentJournals(connection: PoolConnection) {
       AND ju.id_referensi = pp.id
       AND ju.deskripsi LIKE 'Pembayaran Angsuran%'
     WHERE ju.id IS NULL
+      AND pp.status_approval = 'approved'
     ORDER BY pp.tanggal_bayar ASC, pp.id ASC`,
   );
 
@@ -118,6 +137,46 @@ async function backfillMissingPaymentJournals(connection: PoolConnection) {
   }
 }
 
+async function postPaymentJournals(
+  connection: PoolConnection,
+  payment: PaymentJournalRow,
+  idPengguna: number,
+) {
+  if (!payment.id_anggota) return;
+
+  const pokok = Number(payment.jumlah_bayar);
+  const bunga = calculateInstallmentInterest(payment.jumlah_bunga, payment.jangka_waktu);
+
+  await addBalancedJournal(
+    connection,
+    installmentJournal(Number(payment.id_anggota), pokok, bunga).map((line) => ({
+      ...line,
+      date: toDateInput(payment.tanggal_bayar),
+      description: payment.keterangan?.includes("AUTO-PINJAMAN")
+        ? `${line.description} otomatis`
+        : line.description,
+    })),
+  );
+
+  await replaceJournalEntryByReference(
+    connection,
+    {
+      tipeJurnal: "pinjaman",
+      idReferensi: Number(payment.id),
+      deskripsiPrefix: "Pembayaran Angsuran",
+    },
+    createInstallmentJournalEntry(
+      Number(payment.id_anggota),
+      pokok,
+      bunga,
+      payment.tanggal_bayar,
+      toPeriode(payment.tanggal_bayar),
+      idPengguna,
+      Number(payment.id),
+    ),
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -127,7 +186,7 @@ export async function GET(request: NextRequest) {
     const connection = await pool.getConnection();
     let pembayaran;
     try {
-      await ensureLoanScheduleColumns(connection);
+      await ensureLoanPaymentInfrastructure(connection);
       await connection.beginTransaction();
       await runLoanPaymentAutomation(connection);
       await backfillMissingPaymentJournals(connection);
@@ -149,6 +208,7 @@ export async function GET(request: NextRequest) {
               SELECT SUM(pp2.jumlah_bayar)
               FROM pembayaran_pinjaman pp2
               WHERE pp2.id_pinjaman = p.id
+                AND pp2.status_approval = 'approved'
                 AND (
                   pp2.tanggal_bayar < pp.tanggal_bayar
                   OR (pp2.tanggal_bayar = pp.tanggal_bayar AND pp2.id <= pp.id)
@@ -208,10 +268,13 @@ export async function POST(request: NextRequest) {
 
     try {
       await connection.beginTransaction();
+      await ensureLoanPaymentInfrastructure(connection);
       
       const [result] = await connection.query<ResultSetHeader>(
-        "INSERT INTO pembayaran_pinjaman (id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan) VALUES (?, ?, NOW(), ?)",
-        [id_pinjaman, jumlah_bayar, keterangan],
+        `INSERT INTO pembayaran_pinjaman
+          (id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan, status_approval, tanggal_disetujui, id_approver)
+         VALUES (?, ?, NOW(), ?, 'approved', NOW(), ?)`,
+        [id_pinjaman, jumlah_bayar, keterangan, idPengguna || 1],
       );
       const idPembayaran = result.insertId;
 
@@ -275,12 +338,85 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const { id, id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan, idPengguna } =
+    const { id, id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan, idPengguna, status_approval } =
       await request.json();
 
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();
+      await ensureLoanPaymentInfrastructure(connection);
+
+      if (status_approval) {
+        const [rows] = await connection.query<PaymentJournalRow[]>(
+          `SELECT
+             pp.id,
+             pp.id_pinjaman,
+             pp.jumlah_bayar,
+             pp.tanggal_bayar,
+             pp.keterangan,
+             pp.status_approval,
+             p.id_anggota,
+             p.jumlah_bunga,
+             p.jangka_waktu
+           FROM pembayaran_pinjaman pp
+           JOIN pinjaman p ON p.id = pp.id_pinjaman
+           WHERE pp.id = ?
+           LIMIT 1`,
+          [id],
+        );
+        const payment = rows[0];
+        if (!payment) {
+          await connection.rollback();
+          return NextResponse.json(
+            { success: false, error: "Pembayaran tidak ditemukan" },
+            { status: 404 },
+          );
+        }
+
+        if (status_approval === "approved") {
+          if (payment.status_approval !== "approved") {
+            await postPaymentJournals(connection, payment, Number(idPengguna || 1));
+          }
+          await connection.query(
+            "UPDATE pembayaran_pinjaman SET status_approval = 'approved', tanggal_disetujui = NOW(), id_approver = ?, keterangan = ? WHERE id = ?",
+            [idPengguna || 1, (payment.keterangan || "").replace(" - menunggu approval", " - disetujui"), id],
+          );
+        } else if (status_approval === "failed") {
+          await deleteJournalEntriesByReference(connection, {
+            tipeJurnal: "pinjaman",
+            idReferensi: Number(id),
+            deskripsiPrefix: "Pembayaran Angsuran",
+          });
+          await connection.query(
+            "UPDATE pembayaran_pinjaman SET status_approval = 'failed', tanggal_disetujui = NULL, id_approver = ?, keterangan = ? WHERE id = ?",
+            [idPengguna || 1, `${payment.keterangan || "Angsuran otomatis"} - gagal`, id],
+          );
+          await connection.query(
+            `INSERT INTO pembayaran_pinjaman
+              (id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan, status_approval)
+             VALUES (?, ?, ?, ?, 'pending')`,
+            [
+              payment.id_pinjaman,
+              payment.jumlah_bayar,
+              addOneMonth(payment.tanggal_bayar),
+              `${payment.keterangan || "Angsuran otomatis"} - dijadwalkan ulang`,
+            ],
+          );
+        } else {
+          await connection.rollback();
+          return NextResponse.json(
+            { success: false, error: "Status approval tidak valid" },
+            { status: 400 },
+          );
+        }
+
+        await connection.commit();
+        return NextResponse.json({
+          success: true,
+          message: status_approval === "approved" ? "Angsuran berhasil disetujui" : "Angsuran ditandai gagal dan dijadwalkan ulang",
+        });
+      }
+
       await connection.query(
         "UPDATE pembayaran_pinjaman SET id_pinjaman = ?, jumlah_bayar = ?, tanggal_bayar = ?, keterangan = ? WHERE id = ?",
         [id_pinjaman, jumlah_bayar, tanggal_bayar, keterangan, id],
