@@ -82,7 +82,7 @@ export default function MemberSidebar({ user }: MemberSidebarProps) {
     <aside className="sticky top-0 flex h-screen w-72 shrink-0 flex-col bg-slate-950 text-white shadow-2xl shadow-slate-950/40">
       <div className="shrink-0 flex items-center gap-3 border-b border-white/10 px-5 py-4">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5">
-          <Image src="/koperasi-logo.svg" alt="Logo Koperasi" width={34} height={34} className="h-full w-full object-contain" />
+          <Image src="/koperasi-logo.jpg" alt="Logo Koperasi" width={34} height={34} className="h-full w-full object-contain" />
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-400">

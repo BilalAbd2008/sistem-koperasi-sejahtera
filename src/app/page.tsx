@@ -64,7 +64,7 @@ function LoginForm() {
       <div className="mx-auto flex h-full w-full max-w-6xl items-center justify-center rounded-3xl border border-slate-200 bg-white/80 p-4 shadow-[0_25px_60px_-35px_rgba(15,23,42,0.35)] backdrop-blur md:gap-14 md:p-8 lg:p-10">
         <section className="hidden w-full max-w-xl md:block md:text-left">
           <div className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-3xl bg-white p-3 shadow-inner shadow-emerald-100">
-            <Image src="/koperasi-logo.svg" alt="Logo Koperasi" width={72} height={72} className="h-full w-full object-contain" priority />
+            <Image src="/koperasi-logo.jpg" alt="Logo Koperasi" width={72} height={72} className="h-full w-full object-contain" priority />
           </div>
 
           <h1 className="text-3xl font-bold leading-tight text-slate-800 md:text-4xl">

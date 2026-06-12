@@ -196,7 +196,7 @@ export default function BendaharaSidebar({ user }: BendaharaSidebarProps) {
       <aside className="fixed inset-y-0 left-0 z-40 flex h-dvh w-72 flex-col overflow-hidden bg-slate-950 text-white shadow-2xl shadow-slate-950/40">
         <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white p-1.5">
-            <Image src="/koperasi-logo.svg" alt="Logo Koperasi" width={34} height={34} className="h-full w-full object-contain" />
+            <Image src="/koperasi-logo.jpg" alt="Logo Koperasi" width={34} height={34} className="h-full w-full object-contain" />
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-400">
