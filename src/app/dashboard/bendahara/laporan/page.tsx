@@ -23,8 +23,8 @@ export default function BendaharaLaporanPage() {
   useEffect(() => {
     const currentUser = getCurrentUser();
     if (!currentUser) return void router.push("/");
-    if (currentUser.role !== "bendahara" && currentUser.role !== "admin") {
-      return void router.push("/dashboard");
+    if (currentUser.role !== "bendahara") {
+      return void router.push("/");
     }
 
     setUser(currentUser);

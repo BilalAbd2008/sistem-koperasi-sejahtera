@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, FileSpreadsheet, Printer, RefreshCw } from "lucide-react";
+import { Download, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { exportToExcel } from "@/lib/export";
 
 type SectionMode = "assets" | "liabilities";
@@ -184,14 +184,6 @@ export default function BalanceSheetSectionReport({ mode }: { mode: SectionMode 
           >
             <FileSpreadsheet size={16} />
             Excel
-          </button>
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="flex h-10 items-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-800 transition hover:bg-slate-200"
-          >
-            <Printer size={16} />
-            Cetak
           </button>
         </div>
       </div>

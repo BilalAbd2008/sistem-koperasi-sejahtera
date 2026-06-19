@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Download, Eye, FileSpreadsheet, Printer, RefreshCw } from "lucide-react";
+import { Copy, Download, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { exportToExcel } from "@/lib/export";
 
 interface TrialBalanceRow {
@@ -106,9 +106,6 @@ export default function TrialBalanceReport() {
 
   const difference = Math.abs(totals.debit - totals.kredit);
   const balanced = difference < 0.01;
-  const handlePrint = () => window.print();
-  const handlePreview = () =>
-    document.getElementById("trial-balance-document")?.scrollIntoView({ behavior: "smooth" });
   const exportRows = () =>
     rows.map((row) => ({
       "Kode Akun": row.kodeRekening,
@@ -192,10 +189,6 @@ export default function TrialBalanceReport() {
     <div className="space-y-5 text-slate-900">
       <div className="flex flex-wrap items-center justify-end gap-2 lg:-mt-20 lg:mb-12">
         <div className="flex flex-wrap items-center gap-2">
-          <ReportActionButton variant="dark" onClick={handlePreview}>
-            <Eye size={16} />
-            Preview
-          </ReportActionButton>
           <ReportActionButton variant="yellow" onClick={handleDownloadPDF}>
             <Download size={16} />
             PDF
@@ -203,10 +196,6 @@ export default function TrialBalanceReport() {
           <ReportActionButton onClick={handleDownloadExcel}>
             <FileSpreadsheet size={16} />
             Excel
-          </ReportActionButton>
-          <ReportActionButton onClick={handlePrint}>
-            <Printer size={16} />
-            Cetak
           </ReportActionButton>
           <button
             type="button"

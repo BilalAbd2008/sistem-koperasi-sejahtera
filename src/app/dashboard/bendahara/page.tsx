@@ -112,8 +112,8 @@ export default function BendaharaDashboardPage() {
       return;
     }
 
-    if (currentUser.role !== "bendahara" && currentUser.role !== "admin") {
-      router.push("/dashboard");
+    if (currentUser.role !== "bendahara") {
+      router.push("/");
       return;
     }
 

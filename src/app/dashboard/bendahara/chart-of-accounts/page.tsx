@@ -20,7 +20,7 @@ export default function ChartOfAccountsPage() {
   useEffect(() => {
     const currentUser = getCurrentUser();
     if (!currentUser) return void router.push("/");
-    if (currentUser.role !== "bendahara" && currentUser.role !== "admin") return void router.push("/dashboard");
+    if (currentUser.role !== "bendahara") return void router.push("/");
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(currentUser);
     setLoading(false);

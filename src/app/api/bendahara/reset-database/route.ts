@@ -16,7 +16,6 @@ const tablesToReset = [
   "rekening",
   "password_reset_tokens",
   "pengumuman",
-  "pengaturan_sistem",
   "laporan_keuangan",
   "transaksi_lain",
   "shu_alokasi",
@@ -28,12 +27,13 @@ const tablesToReset = [
   "pengguna",
 ];
 
-async function seedDefaultUsers(connection: Awaited<ReturnType<typeof pool.getConnection>>) {
+async function seedDefaultUsers(
+  connection: Awaited<ReturnType<typeof pool.getConnection>>,
+) {
   await connection.query(
     `INSERT INTO pengguna
       (username, password, nama_lengkap, email, role, status)
      VALUES
-      ('admin', 'admin123', 'Administrator', 'admin@koperasi.local', 'admin', 'aktif'),
       ('bendahara', 'bend123', 'Bendahara Koperasi', 'bendahara@koperasi.local', 'bendahara', 'aktif')`,
   );
 }
@@ -101,17 +101,6 @@ async function seedAccountingPeriods(
   }
 }
 
-async function seedDefaultSettings(
-  connection: Awaited<ReturnType<typeof pool.getConnection>>,
-) {
-  await connection.query(
-    `INSERT INTO pengaturan_sistem
-      (key_setting, value_setting, deskripsi)
-     VALUES
-      ('limit_transfer', '5000000', 'Limit default transfer koperasi')`,
-  );
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -120,7 +109,7 @@ export async function POST(request: NextRequest) {
     const password = String(body.password || "");
     const confirmation = String(body.confirmation || "");
 
-    if (role !== "admin" && role !== "bendahara") {
+    if (role !== "bendahara") {
       return NextResponse.json(
         { success: false, error: "Tidak memiliki akses reset database" },
         { status: 403 },
@@ -142,7 +131,7 @@ export async function POST(request: NextRequest) {
          FROM pengguna
          WHERE username = ?
           AND password = ?
-          AND role IN ('admin', 'bendahara')
+          AND role = 'bendahara'
           AND status = 'aktif'
          LIMIT 1`,
         [username, password],
@@ -166,7 +155,6 @@ export async function POST(request: NextRequest) {
       await seedDefaultUsers(connection);
       await seedChartOfAccounts(connection);
       await seedAccountingPeriods(connection);
-      await seedDefaultSettings(connection);
 
       return NextResponse.json({
         success: true,

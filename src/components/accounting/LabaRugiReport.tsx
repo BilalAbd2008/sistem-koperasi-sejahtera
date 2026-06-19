@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Download, Eye, FileSpreadsheet, Printer, RefreshCw } from "lucide-react";
+import { Copy, Download, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { exportToExcel } from "@/lib/export";
 
 interface IncomeItem {
@@ -115,9 +115,6 @@ export default function LabaRugiReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handlePrint = () => window.print();
-  const handlePreview = () =>
-    document.getElementById("income-report-document")?.scrollIntoView({ behavior: "smooth" });
   const handleCopyLink = async () => {
     await navigator.clipboard?.writeText(window.location.href);
   };
@@ -225,10 +222,6 @@ export default function LabaRugiReport() {
     <div className="space-y-5 text-slate-900">
       <div className="flex flex-wrap items-center justify-end gap-2 lg:-mt-20 lg:mb-12">
         <div className="flex flex-wrap items-center gap-2">
-          <ReportActionButton variant="dark" onClick={handlePreview}>
-            <Eye size={16} />
-            Preview
-          </ReportActionButton>
           <ReportActionButton variant="yellow" onClick={handleDownloadPDF}>
             <Download size={16} />
             PDF
@@ -236,10 +229,6 @@ export default function LabaRugiReport() {
           <ReportActionButton onClick={handleDownloadExcel}>
             <FileSpreadsheet size={16} />
             Excel
-          </ReportActionButton>
-          <ReportActionButton onClick={handlePrint}>
-            <Printer size={16} />
-            Cetak
           </ReportActionButton>
           <button
             type="button"

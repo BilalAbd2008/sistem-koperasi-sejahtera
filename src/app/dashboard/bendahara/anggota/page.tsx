@@ -58,7 +58,7 @@ export default function BendaharaAnggotaPage() {
   useEffect(() => {
     const user = getCurrentUser();
     if (!user) return void router.push("/");
-    if (user.role !== "bendahara" && user.role !== "admin") return void router.push("/dashboard");
+    if (user.role !== "bendahara") return void router.push("/");
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(user);
     loadData();
