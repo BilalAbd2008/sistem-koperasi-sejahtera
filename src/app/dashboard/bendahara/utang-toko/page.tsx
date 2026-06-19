@@ -256,7 +256,7 @@ export default function BendaharaUtangTokoPage() {
   return (
     <FinancialReportShell
       eyebrow="Simpan Pinjam"
-      title="Utang Toko"
+      title="Toko"
       description="Input manual utang toko anggota per bulan dan tersimpan ke database."
     >
       <div className="grid gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
@@ -268,7 +268,7 @@ export default function BendaharaUtangTokoPage() {
             Input Manual
           </p>
           <h2 className="mt-1 text-xl font-bold text-slate-900">
-            Tambah Utang Toko
+            Tambah Transaksi Toko
           </h2>
 
           <div className="mt-6 space-y-4">
@@ -353,7 +353,7 @@ export default function BendaharaUtangTokoPage() {
           <div className="border-b border-slate-200 p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-bold text-slate-900">
-                Daftar Utang Toko
+                Daftar Belanja Toko
               </h2>
               <div className="flex flex-wrap gap-2">
                 <button

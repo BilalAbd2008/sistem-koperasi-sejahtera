@@ -59,7 +59,7 @@ const menuSections = [
       },
       {
         href: "/dashboard/bendahara/utang-toko",
-        label: "Utang Toko",
+        label: "Toko",
         icon: (
           <path d="M4 6h16l-1.4 8.4A2 2 0 0 1 16.6 16H8a2 2 0 0 1-2-1.6L4.8 8H3V6h1Zm4 12a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm8 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z" />
         ),
