@@ -12,31 +12,37 @@ interface UserData {
   role: string;
 }
 
+const DEFAULT_ALLOWED_ROLES = ["bendahara"];
+
 export default function FinancialReportShell({
   eyebrow,
   title,
   description,
+  allowedRoles = DEFAULT_ALLOWED_ROLES,
   children,
 }: {
   eyebrow: string;
   title: string;
   description?: string;
+  allowedRoles?: string[];
   children: ReactNode;
 }) {
   const router = useRouter();
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
+  const allowedRolesKey = allowedRoles.join("|");
 
   useEffect(() => {
     const currentUser = getCurrentUser();
     if (!currentUser) return void router.push("/");
-    if (currentUser.role !== "bendahara") {
+    const roles = allowedRolesKey.split("|");
+    if (!roles.includes(currentUser.role)) {
       return void router.push("/");
     }
 
     setUser(currentUser);
     setLoading(false);
-  }, [router]);
+  }, [allowedRolesKey, router]);
 
   if (loading || !user) {
     return (

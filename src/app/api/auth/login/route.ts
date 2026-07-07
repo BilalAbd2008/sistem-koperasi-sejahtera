@@ -11,6 +11,8 @@ type LoginUserRow = RowDataPacket & {
   role: string;
 };
 
+const ALLOWED_LOGIN_ROLES = ["bendahara", "ketua_koperasi"];
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -19,8 +21,11 @@ export async function POST(request: NextRequest) {
 
     const connection = await pool.getConnection();
     const [users] = await connection.query(
-      'SELECT * FROM pengguna WHERE (username = ? OR email = ?) AND status = "aktif" AND role = "bendahara"',
-      [username, username],
+      `SELECT * FROM pengguna
+       WHERE (username = ? OR email = ?)
+         AND status = "aktif"
+         AND role IN (?, ?)`,
+      [username, username, ...ALLOWED_LOGIN_ROLES],
     );
 
     if (Array.isArray(users) && users.length === 0) {

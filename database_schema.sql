@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS pengguna (
   password VARCHAR(255) NOT NULL,
   nama_lengkap VARCHAR(100) NOT NULL,
   email VARCHAR(100) UNIQUE,
-  role ENUM('admin', 'bendahara', 'pengurus', 'anggota') DEFAULT 'anggota',
+  role ENUM('admin', 'bendahara', 'ketua_koperasi', 'pengurus', 'anggota') DEFAULT 'anggota',
   status ENUM('aktif', 'nonaktif') DEFAULT 'aktif',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP

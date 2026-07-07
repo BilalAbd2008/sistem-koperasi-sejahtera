@@ -13,6 +13,7 @@ interface UserData {
 }
 
 type ReportTab = "neraca" | "labarugi";
+const allowedRoles = ["bendahara", "ketua_koperasi"];
 
 export default function BendaharaLaporanPage() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export default function BendaharaLaporanPage() {
   useEffect(() => {
     const currentUser = getCurrentUser();
     if (!currentUser) return void router.push("/");
-    if (currentUser.role !== "bendahara") {
+    if (!allowedRoles.includes(currentUser.role)) {
       return void router.push("/");
     }
 
@@ -46,7 +47,7 @@ export default function BendaharaLaporanPage() {
         <div className="flex-1 bg-slate-50 px-8 py-6">
           <div className="mb-6 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-semibold text-slate-500">
-              Laporan Keuangan Bendahara
+              Laporan Keuangan
             </p>
             <h1 className="text-2xl font-bold text-slate-900">
               {activeTab === "neraca" ? "Neraca" : "Laporan Laba Rugi"}

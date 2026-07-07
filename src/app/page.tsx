@@ -30,7 +30,7 @@ function LoginForm() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password, role: "bendahara" }),
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await response.json();
@@ -48,7 +48,11 @@ function LoginForm() {
         }
         localStorage.setItem("users", JSON.stringify(users));
         localStorage.setItem("currentRole", data.user.role);
-        router.push("/dashboard/bendahara");
+        router.push(
+          data.user.role === "ketua_koperasi"
+            ? "/dashboard/bendahara/laporan"
+            : "/dashboard/bendahara",
+        );
       } else {
         setError(data.error || "Login gagal");
       }

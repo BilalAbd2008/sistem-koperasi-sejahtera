@@ -8,6 +8,8 @@ type UserRow = RowDataPacket & {
   role: string;
 };
 
+const PROFILE_ROLES = ["bendahara", "ketua_koperasi"];
+
 export async function PUT(request: NextRequest) {
   const connection = await pool.getConnection();
 
@@ -43,16 +45,24 @@ export async function PUT(request: NextRequest) {
     const [result] = await connection.query<ResultSetHeader>(
       `UPDATE pengguna
        SET nama_lengkap = ?, username = ?, email = ?
-       WHERE id = ? AND role = "bendahara"`,
-      [nextName, nextUsername, nextEmail, userId],
+       WHERE id = ? AND role IN (?, ?)`,
+      [nextName, nextUsername, nextEmail, userId, ...PROFILE_ROLES],
     );
 
     if (result.affectedRows === 0) {
       return NextResponse.json(
-        { success: false, error: "Profil bendahara tidak ditemukan" },
+        { success: false, error: "Profil tidak ditemukan" },
         { status: 404 },
       );
     }
+
+    const [rows] = await connection.query<UserRow[]>(
+      `SELECT id, role
+       FROM pengguna
+       WHERE id = ?
+       LIMIT 1`,
+      [userId],
+    );
 
     return NextResponse.json({
       success: true,
@@ -62,7 +72,7 @@ export async function PUT(request: NextRequest) {
         nama_lengkap: nextName,
         username: nextUsername,
         email: nextEmail,
-        role: "bendahara",
+        role: rows[0]?.role || "bendahara",
       },
     });
   } catch (error) {
@@ -102,14 +112,14 @@ export async function PATCH(request: NextRequest) {
     const [rows] = await connection.query<UserRow[]>(
       `SELECT id, password, role
        FROM pengguna
-       WHERE id = ? AND role = "bendahara" AND status = "aktif"
+       WHERE id = ? AND role IN (?, ?) AND status = "aktif"
        LIMIT 1`,
-      [userId],
+      [userId, ...PROFILE_ROLES],
     );
 
     if (rows.length === 0) {
       return NextResponse.json(
-        { success: false, error: "Akun bendahara tidak ditemukan" },
+        { success: false, error: "Akun tidak ditemukan" },
         { status: 404 },
       );
     }

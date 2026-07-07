@@ -28,6 +28,7 @@ type Notice = {
 } | null;
 
 const resetConfirmationText = "RESET DATA";
+const profileRoles = ["bendahara", "ketua_koperasi"];
 
 export default function BendaharaProfilPage() {
   const router = useRouter();
@@ -56,7 +57,7 @@ export default function BendaharaProfilPage() {
   useEffect(() => {
     const user = getCurrentUser();
     if (!user) return void router.push("/");
-    if (user.role !== "bendahara") return void router.push("/");
+    if (!profileRoles.includes(user.role)) return void router.push("/");
     // Session data lives in localStorage, so the profile form is hydrated on mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(user);
@@ -226,7 +227,7 @@ export default function BendaharaProfilPage() {
   if (!user)
     return (
       <div className="flex h-screen items-center justify-center bg-slate-950 text-white">
-        Memuat profil bendahara...
+        Memuat profil...
       </div>
     );
   return (
@@ -238,7 +239,7 @@ export default function BendaharaProfilPage() {
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-600">
-                  Bendahara
+                  {user.role === "ketua_koperasi" ? "Ketua Koperasi" : "Bendahara"}
                 </p>
                 <h1 className="mt-1 text-2xl font-bold text-slate-900">
                   Profil Saya
@@ -267,7 +268,7 @@ export default function BendaharaProfilPage() {
                     Informasi Akun
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Data ini digunakan untuk login dan identitas bendahara.
+                    Data ini digunakan untuk login dan identitas akun.
                   </p>
                 </div>
               </div>
@@ -435,90 +436,92 @@ export default function BendaharaProfilPage() {
             </form>
           </div>
 
-          <form
-            onSubmit={handleResetDatabase}
-            className="mt-6 rounded-lg border border-red-200 bg-white p-6 shadow-sm"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700">
-                  <TriangleAlert className="h-5 w-5" />
+          {user.role === "bendahara" ? (
+            <form
+              onSubmit={handleResetDatabase}
+              className="mt-6 rounded-lg border border-red-200 bg-white p-6 shadow-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-700">
+                    <TriangleAlert className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-600">
+                      Zona Berbahaya
+                    </p>
+                    <h2 className="mt-1 text-lg font-bold text-slate-900">
+                      Reset Semua Data
+                    </h2>
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                      Menghapus seluruh data anggota, simpanan, pinjaman, utang
+                      toko, jurnal, laporan keuangan, pengumuman, dan SHU. Akun
+                      login default serta daftar akun akuntansi dasar akan dibuat
+                      ulang.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-600">
-                    Zona Berbahaya
-                  </p>
-                  <h2 className="mt-1 text-lg font-bold text-slate-900">
-                    Reset Semua Data
-                  </h2>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
-                    Menghapus seluruh data anggota, simpanan, pinjaman, utang
-                    toko, jurnal, laporan keuangan, pengumuman, dan SHU. Akun
-                    login default serta daftar akun akuntansi dasar akan dibuat
-                    ulang.
-                  </p>
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-red-50 text-red-700">
+                  <Database className="h-5 w-5" />
                 </div>
               </div>
-              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-red-50 text-red-700">
-                <Database className="h-5 w-5" />
-              </div>
-            </div>
 
-            {resetNotice ? (
-              <div
-                className={`mt-5 rounded-lg border px-4 py-3 text-sm font-semibold ${
-                  resetNotice.type === "success"
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-red-200 bg-red-50 text-red-700"
-                }`}
-              >
-                {resetNotice.message}
-              </div>
-            ) : null}
+              {resetNotice ? (
+                <div
+                  className={`mt-5 rounded-lg border px-4 py-3 text-sm font-semibold ${
+                    resetNotice.type === "success"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-red-200 bg-red-50 text-red-700"
+                  }`}
+                >
+                  {resetNotice.message}
+                </div>
+              ) : null}
 
-            <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
-              <label className="block text-sm font-semibold text-slate-700">
-                <span className="mb-1 block">
-                  Ketik {resetConfirmationText}
-                </span>
-                <input
-                  value={resetForm.confirmation}
-                  onChange={(event) =>
-                    setResetForm({
-                      ...resetForm,
-                      confirmation: event.target.value,
-                    })
+              <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
+                <label className="block text-sm font-semibold text-slate-700">
+                  <span className="mb-1 block">
+                    Ketik {resetConfirmationText}
+                  </span>
+                  <input
+                    value={resetForm.confirmation}
+                    onChange={(event) =>
+                      setResetForm({
+                        ...resetForm,
+                        confirmation: event.target.value,
+                      })
+                    }
+                    className="h-12 w-full rounded-lg border border-red-200 px-4 text-slate-900 outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100"
+                    placeholder={resetConfirmationText}
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  <span className="mb-1 block">Password akun {user.username}</span>
+                  <input
+                    type="password"
+                    value={resetForm.password}
+                    onChange={(event) =>
+                      setResetForm({ ...resetForm, password: event.target.value })
+                    }
+                    className="h-12 w-full rounded-lg border border-red-200 px-4 text-slate-900 outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100"
+                    placeholder="Masukkan password"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={
+                    resettingDatabase ||
+                    resetForm.confirmation !== resetConfirmationText ||
+                    resetForm.password.length === 0
                   }
-                  className="h-12 w-full rounded-lg border border-red-200 px-4 text-slate-900 outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100"
-                  placeholder={resetConfirmationText}
-                />
-              </label>
-              <label className="block text-sm font-semibold text-slate-700">
-                <span className="mb-1 block">Password akun {user.username}</span>
-                <input
-                  type="password"
-                  value={resetForm.password}
-                  onChange={(event) =>
-                    setResetForm({ ...resetForm, password: event.target.value })
-                  }
-                  className="h-12 w-full rounded-lg border border-red-200 px-4 text-slate-900 outline-none transition focus:border-red-500 focus:ring-4 focus:ring-red-100"
-                  placeholder="Masukkan password"
-                />
-              </label>
-              <button
-                type="submit"
-                disabled={
-                  resettingDatabase ||
-                  resetForm.confirmation !== resetConfirmationText ||
-                  resetForm.password.length === 0
-                }
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-red-600 px-5 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-              >
-                <Database className="h-4 w-4" />
-                {resettingDatabase ? "Mereset..." : "Reset Database"}
-              </button>
-            </div>
-          </form>
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-red-600 px-5 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+                >
+                  <Database className="h-4 w-4" />
+                  {resettingDatabase ? "Mereset..." : "Reset Database"}
+                </button>
+              </div>
+            </form>
+          ) : null}
         </main>
       </div>
     </div>

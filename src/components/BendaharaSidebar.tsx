@@ -157,10 +157,72 @@ const menuSections = [
   },
 ];
 
+const ketuaKoperasiMenuSections = [
+  {
+    title: "Laporan Keuangan",
+    items: [
+      {
+        href: "/dashboard/bendahara/laporan",
+        label: "Laporan Keuangan",
+        icon: (
+          <path d="M4 4h16v16H4V4Zm4 5h8M8 13h8M8 17h5" />
+        ),
+      },
+      {
+        href: "/dashboard/bendahara/trial-balance",
+        label: "Neraca Saldo (TB)",
+        icon: (
+          <path d="M11 4h2v3h6v2h-2.1l3.1 6.2A4 4 0 0 1 12 15.2L15.1 9H13v10h4v2H7v-2h4V9H8.9l3.1 6.2A4 4 0 0 1 4 15.2L7.1 9H5V7h6V4Zm-4 7.2-1.8 3.6h3.6L7 11.2Zm10 0-1.8 3.6h3.6L17 11.2Z" />
+        ),
+      },
+      {
+        href: "/dashboard/bendahara/laba-rugi",
+        label: "Laba Rugi (P&L)",
+        icon: (
+          <path d="M4 17.5 9.5 12l3 3L20 6.5 18.5 5 12.5 12l-3-3L3 15.5l1 2Z" />
+        ),
+      },
+      {
+        href: "/dashboard/bendahara/neraca",
+        label: "Neraca (Posisi Keuangan)",
+        icon: (
+          <path d="M3 21h18v-2H3v2ZM5 10h3v7H5v-7Zm5-4h4v11h-4V6Zm6 7h3v4h-3v-4ZM4 4h16v2H4V4Z" />
+        ),
+      },
+    ],
+  },
+  {
+    title: "Sistem",
+    items: [
+      {
+        href: "/dashboard/bendahara/profil",
+        label: "Profil",
+        icon: (
+          <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5Z" />
+        ),
+      },
+    ],
+  },
+  {
+    title: "Sistem",
+    items: [
+      {
+        href: "/dashboard/bendahara/profil",
+        label: "Profil",
+        icon: (
+          <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm0 2c-4.4 0-8 2.2-8 5v1h16v-1c0-2.8-3.6-5-8-5Z" />
+        ),
+      },
+    ],
+  },
+];
+
 export default function BendaharaSidebar({ user }: BendaharaSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const navRef = useRef<HTMLElement | null>(null);
+  const sections =
+    user.role === "ketua_koperasi" ? ketuaKoperasiMenuSections : menuSections;
 
   useEffect(() => {
     const nav = navRef.current;
@@ -180,7 +242,7 @@ export default function BendaharaSidebar({ user }: BendaharaSidebarProps) {
   }, []);
 
   const handleLogout = () => {
-    logout("bendahara");
+    logout(user.role);
     router.push("/");
   };
 
@@ -203,7 +265,7 @@ export default function BendaharaSidebar({ user }: BendaharaSidebarProps) {
 
         <nav ref={navRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
           <div className="space-y-6">
-            {menuSections.map((section) => (
+            {sections.map((section) => (
               <section key={section.title}>
                 <p className="mb-2 px-4 text-[11px] font-bold uppercase tracking-[0.22em] text-white/35">
                   {section.title}
